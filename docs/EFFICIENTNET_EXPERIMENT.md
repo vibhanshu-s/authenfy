@@ -100,6 +100,12 @@ preprocessing/split versions, seed, augmentation, optimizer settings, AMP status
 software versions and hardware. `python -m training.plots runs/ff-c23` exports
 learning curves, ROC/PR/calibration plots, confusion matrices and speed comparisons.
 
+`additional-metrics.json` also separates the application's 0.2/0.8 review bands
+from the benchmark's fixed-0.5 classification: inconclusive/low/flagged counts,
+decisive fraction, selective accuracy, flagged precision and real-video flag rate.
+Disagreement and approximate-reuse abstention follow the application's policy.
+Selective accuracy is conditional on decisive cases, not whole-dataset accuracy.
+
 ## Deferred V2
 
 AI-video development is deferred at the user's request. FF++ contains facial manipulation examples; it cannot establish detection of fully

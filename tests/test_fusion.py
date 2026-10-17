@@ -276,3 +276,25 @@ def test_benchmark_resume_preserves_completed_frames_and_rejects_corruption(tmp_
     (tmp_path / "00000.npz").write_bytes(b"interrupted or corrupted transfer")
     with pytest.raises(ValueError, match="missing or corrupt"):
         VideoLedger(tmp_path, identity, resume=True)
+
+
+def test_review_policy_records_abstention_separately():
+    pytest.importorskip("sklearn")
+    from scripts.summarize_fusion import review_policy
+
+    def row(label, average, minimum, maximum, inferred=10):
+        return dict(
+            label=label,
+            fusion_phash=average,
+            measurements={
+                "fusion_phash": [dict(min_score=minimum, max_score=maximum, frames=10, inferred_frames=inferred)]
+            },
+        )
+
+    result = review_policy(
+        [row(0, 0.1, 0.1, 0.1), row(0, 0.1, 0.1, 0.1, 1), row(1, 0.9, 0.9, 0.9), row(1, 0.8, 0.2, 0.9)],
+        "fusion_phash",
+    )
+    assert result["counts"] == dict(synthetic_signals=1, low_synthetic_signals=1, inconclusive=2)
+    assert result["decisive_fraction"] == 0.5
+    assert result["selective_accuracy"] == 1.0

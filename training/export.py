@@ -74,6 +74,14 @@ def main(args):
         benchmark_sha256=file_sha(args.run / "benchmark.json"),
         parity_max_logit_error=max(errors),
         parity_inputs=len(rows) * 2,
+        parameter_counts={
+            "efficientnet_baseline": sum(p.numel() for p in baseline.parameters()),
+            "active_backbone": sum(p.numel() for p in baseline.net.features.parameters()),
+            "fusion_head": sum(p.numel() for p in head.parameters()),
+            "active_fusion_total": sum(p.numel() for p in baseline.net.features.parameters())
+            + sum(p.numel() for p in head.parameters()),
+        },
+        model_bytes=output.stat().st_size,
         task="facial_manipulation",
         threshold=0.5,
         limitation="Source-pair FF++ evaluation only; no evidence for fully generated videos or calibrated probabilities.",

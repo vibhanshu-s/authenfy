@@ -37,6 +37,35 @@ def scalars(y, p):
     )
 
 
+def review_policy(records, arm):
+    """Describe application review bands separately from 0.5 classification."""
+    outcomes = []
+    for row in records:
+        measurement = row["measurements"][arm][0]
+        average, maximum, minimum = row[arm], measurement["max_score"], measurement["min_score"]
+        reused = measurement["inferred_frames"] < measurement["frames"]
+        verdict = 1 if average >= 0.8 else 0 if maximum <= 0.2 and not reused else None
+        if maximum - minimum > 0.5:
+            verdict = None
+        outcomes.append(verdict)
+    accepted = [(row["label"], verdict) for row, verdict in zip(records, outcomes, strict=True) if verdict is not None]
+    flagged = [(row["label"], verdict) for row, verdict in zip(records, outcomes, strict=True) if verdict == 1]
+    real_count = sum(row["label"] == 0 for row in records)
+    return dict(
+        counts={
+            "synthetic_signals": outcomes.count(1),
+            "low_synthetic_signals": outcomes.count(0),
+            "inconclusive": outcomes.count(None),
+        },
+        decisive_fraction=len(accepted) / len(records),
+        selective_accuracy=float(np.mean([label == verdict for label, verdict in accepted])) if accepted else None,
+        flagged_precision=float(np.mean([label for label, _ in flagged])) if flagged else None,
+        real_video_flag_rate=sum(label == 0 for label, _ in flagged) / real_count if real_count else None,
+        all_results_require_human_review=True,
+        note="Descriptive review policy, not the fixed-0.5 classification metric or calibrated confidence.",
+    )
+
+
 def summarize(root, repeats=2000):
     if repeats < 1:
         raise ValueError("Bootstrap repeats must be positive")
@@ -96,6 +125,7 @@ def summarize(root, repeats=2000):
         paired_fusion_minus_baseline_accuracy_ci95=[float(v) for v in np.quantile(differences, [0.025, 0.975])],
         paired_speedup_baseline_over_fusion_ci95=[float(v) for v in np.quantile(speedups, [0.025, 0.975])],
         constant_training_prior_control=scalars(y, np.full(len(y), prior)),
+        review_policy_by_arm={arm: review_policy(records, arm) for arm in ARMS},
         operating_points_used_for_deployment=False,
         notes=[
             "Source groups, not correlated frames, are resampled.",
