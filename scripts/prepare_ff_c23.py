@@ -10,7 +10,9 @@ import json
 from pathlib import Path
 import sys
 import time
+import shutil
 from urllib.parse import quote
+from zipfile import ZipFile
 
 import requests
 
@@ -40,8 +42,13 @@ def download(url, path):
                 if "text/html" in response.headers.get("Content-Type", ""):
                     raise ValueError("Dataset download returned an HTML page, not media")
                 with partial.open("wb") as handle:
+                    downloaded, reported = 0, 0
                     for chunk in response.iter_content(1024 * 1024):
                         handle.write(chunk)
+                        downloaded += len(chunk)
+                        if downloaded - reported >= 512 * 1024 * 1024:
+                            print(f"archive download: {downloaded / 1024**3:.1f} GiB", flush=True)
+                            reported = downloaded
             partial.replace(path)
             return
         except (requests.RequestException, ValueError):
@@ -51,7 +58,7 @@ def download(url, path):
             time.sleep(2**attempt)
 
 
-def prepare(root, pair_limits=None):
+def prepare(root, pair_limits=None, download_mode="bulk"):
     root = Path(root)
     root.mkdir(parents=True, exist_ok=True)
     revision = SPLITS_REVISION
@@ -105,10 +112,29 @@ def prepare(root, pair_limits=None):
         row["sha256"] = file_sha(target)
         return row
 
-    with ThreadPoolExecutor(max_workers=8) as executor:
-        for count, _ in enumerate(executor.map(fetch, rows), 1):
-            if count % 24 == 0 or count == len(rows):
-                print(f"downloaded {count}/{len(rows)}", flush=True)
+    if download_mode == "bulk":
+        archive = root / "ff-c23-v1.zip"
+        download(f"https://www.kaggle.com/api/v1/datasets/download/{DATASET}?datasetVersionNumber={VERSION}", archive)
+        with ZipFile(archive) as source:
+            for count, row in enumerate(rows, 1):
+                target = root / row["path"]
+                if not target.is_file():
+                    info = source.getinfo("FaceForensics++_C23/" + row["path"])
+                    if info.file_size > 1024**3:
+                        raise ValueError("Unexpected archive member size")
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    partial = target.with_suffix(".mp4.part")
+                    with source.open(info) as incoming, partial.open("wb") as outgoing:
+                        shutil.copyfileobj(incoming, outgoing)
+                    partial.replace(target)
+                row["sha256"] = file_sha(target)
+                if count % 120 == 0 or count == len(rows):
+                    print(f"extracted {count}/{len(rows)}", flush=True)
+    else:
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            for count, _ in enumerate(executor.map(fetch, rows), 1):
+                if count % 24 == 0 or count == len(rows):
+                    print(f"downloaded {count}/{len(rows)}", flush=True)
     write_manifest(root / "manifest.csv", rows)
     provenance = dict(
         dataset=DATASET,
@@ -131,5 +157,6 @@ if __name__ == "__main__":
     parser.add_argument("--train-pairs", type=int, default=0, help="0 uses every official pair")
     parser.add_argument("--val-pairs", type=int, default=0)
     parser.add_argument("--test-pairs", type=int, default=0)
+    parser.add_argument("--download-mode", choices=["bulk", "files"], default="bulk")
     args = parser.parse_args()
-    prepare(args.root, {"train": args.train_pairs, "val": args.val_pairs, "test": args.test_pairs})
+    prepare(args.root, {"train": args.train_pairs, "val": args.val_pairs, "test": args.test_pairs}, args.download_mode)
