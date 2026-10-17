@@ -1,0 +1,16 @@
+{
+  "name": "authenfy-validation",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Development-only browser and Ethereum registry checks",
+  "scripts": {
+    "test:contract": "node scripts/contract_check.mjs",
+    "test:browser": "node scripts/browser_check.mjs"
+  },
+  "devDependencies": {
+    "ethers": "6.17.0",
+    "ganache": "7.9.2",
+    "playwright": "1.64.1",
+    "solc": "0.8.37"
+  }
+}
