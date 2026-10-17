@@ -24,6 +24,7 @@ from torch.utils.data import DataLoader, Dataset, TensorDataset
 
 from authenfy.fusion_features import FEATURE_VERSION, MEAN, STD, frequency_features, rgb_input
 from training.manifest import file_sha, load_manifest
+from training.checkpoints import atomic_save, restore_rng, rng_state
 from training.metrics import binary_metrics
 from training.networks import EfficientBaseline, FusionHead
 from training.telemetry import hardware, resources
@@ -193,6 +194,8 @@ def train_head(x, y, val_x, val_y, val_rows, dimension, epochs, device, seed):
 
 
 def main(args):
+    if min(args.frames, args.epochs, args.head_epochs, args.batch_size) < 1:
+        raise ValueError("Frame, epoch and batch counts must be positive")
     seed_everything(args.seed)
     runtime = runtime_identity()
     if args.require_t4 and "T4" not in runtime["device"]:
@@ -232,11 +235,47 @@ def main(args):
         initialized_from="torchvision EfficientNet_B0_Weights.IMAGENET1K_V1",
         resources_start=resources(),
     )
+    state_path = args.output / "baseline-training-state.pt"
+    previous = None
+    if args.resume:
+        previous_config = json.loads((args.output / "training.json").read_text())
+        for key in [
+            "seed",
+            "feature_version",
+            "frames_per_train_video",
+            "baseline_epochs",
+            "head_epochs",
+            "batch_size",
+            "manifest_sha256",
+            "runtime",
+            "optimizer",
+            "augmentation",
+        ]:
+            if previous_config[key] != config[key]:
+                raise ValueError(f"Cannot resume: training {key} changed")
+        if previous_config["status"] == "trained":
+            for name, digest in previous_config["weights_sha256"].items():
+                if file_sha(args.output / name) != digest:
+                    raise ValueError("Completed training checkpoint integrity mismatch")
+            print("TRAINING_ALREADY_COMPLETE", flush=True)
+            return
+        if state_path.exists():
+            previous = torch.load(state_path, map_location="cpu", weights_only=True)
+            if (
+                previous.get("schema_version") != 1
+                or previous["config"]["manifest_sha256"] != config["manifest_sha256"]
+                or previous["config"]["runtime"] != config["runtime"]
+            ):
+                raise ValueError("Training snapshot identity mismatch")
+            config = previous["config"]
+    elif state_path.exists() or (args.output / "baseline.pt").exists():
+        raise ValueError("Training progress exists; use --resume or a new output directory")
     (args.output / "training.json").write_text(json.dumps(config, indent=2))
     train_val = [r for r in rows if r["split"] != "test"]
     cache_start = time.perf_counter()
     cache = prepare_cache(train_val, args.output / "crop-cache", args.frames)
-    config["crop_cache_seconds"] = time.perf_counter() - cache_start
+    config.setdefault("cache_preparation_attempt_seconds", []).append(time.perf_counter() - cache_start)
+    config["crop_cache_seconds"] = sum(config["cache_preparation_attempt_seconds"])
     split_rows = {s: [r for r in cache if r["split"] == s] for s in ["train", "val"]}
     loaders = {
         s: DataLoader(CropDataset(split_rows[s]), batch_size=args.batch_size, shuffle=False, num_workers=2)
@@ -260,8 +299,20 @@ def main(args):
     criterion = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(weight, device=device))
     scaler = torch.amp.GradScaler("cuda", enabled=device.type == "cuda")
     history, best, best_epoch = [], float("inf"), None
+    best_state, completed, elapsed_before = None, 0, 0.0
+    if previous is not None:
+        model.load_state_dict(previous["model"])
+        optimizer.load_state_dict(previous["optimizer"])
+        scaler.load_state_dict(previous["scaler"])
+        history, best, best_epoch = previous["history"], previous["best"], previous["best_epoch"]
+        best_state, completed = previous["best_model"], previous["completed_epochs"]
+        elapsed_before = previous["active_training_seconds"]
+        # The snapshot is authoritative if a crash occurred between file writes.
+        atomic_save(best_state, args.output / "baseline.pt")
+        restore_rng(previous["rng"])
+        print(f"RESUMED_BASELINE_AFTER_EPOCH_{completed}", flush=True)
     start = time.perf_counter()
-    for epoch in range(args.epochs):
+    for epoch in range(completed, args.epochs):
         epoch_start = time.perf_counter()
         model.train()
         losses = []
@@ -289,9 +340,26 @@ def main(args):
         )
         if metrics["log_loss"] < best:
             best, best_epoch = metrics["log_loss"], epoch + 1
-            torch.save(model.cpu().state_dict(), args.output / "baseline.pt")
-            model.to(device)
+            best_state = {key: value.detach().cpu().clone() for key, value in model.state_dict().items()}
+            atomic_save(best_state, args.output / "baseline.pt")
         config["baseline_history"] = history
+        atomic_save(
+            dict(
+                schema_version=1,
+                config=config,
+                model={key: value.detach().cpu() for key, value in model.state_dict().items()},
+                best_model=best_state,
+                optimizer=optimizer.state_dict(),
+                scaler=scaler.state_dict(),
+                history=history,
+                best=best,
+                best_epoch=best_epoch,
+                completed_epochs=epoch + 1,
+                active_training_seconds=elapsed_before + time.perf_counter() - start,
+                rng=rng_state(),
+            ),
+            state_path,
+        )
         (args.output / "training.json").write_text(json.dumps(config, indent=2))
         print(
             json.dumps(
@@ -318,11 +386,11 @@ def main(args):
         head, head_history[name] = train_head(
             train_x, train_y, val_x, val_y, split_rows["val"], dimension, args.head_epochs, device, args.seed
         )
-        torch.save(head.state_dict(), args.output / f"{name}.pt")
+        atomic_save(head.state_dict(), args.output / f"{name}.pt")
     config.update(
         status="trained",
         best_baseline_epoch=best_epoch,
-        training_seconds=round(time.perf_counter() - start, 3),
+        training_seconds=round(elapsed_before + time.perf_counter() - start, 3),
         baseline_history=history,
         head_history=head_history,
         resources_end=resources(),
@@ -332,6 +400,8 @@ def main(args):
         weights_sha256={
             f"{name}.pt": file_sha(args.output / f"{name}.pt") for name in ["baseline", "deep_mlp", "fusion"]
         },
+        resume_snapshot_sha256=file_sha(state_path),
+        resume_snapshot_bytes=state_path.stat().st_size,
     )
     (args.output / "training.json").write_text(json.dumps(config, indent=2))
     print("TRAINING_COMPLETE", flush=True)
@@ -347,4 +417,9 @@ if __name__ == "__main__":
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--seed", type=int, default=20261017)
     parser.add_argument("--require-t4", action="store_true")
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="Restore completed baseline epochs with matching inputs/settings/runtime; MLP stages restart from their fixed seed",
+    )
     main(parser.parse_args())

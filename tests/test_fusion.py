@@ -298,3 +298,53 @@ def test_review_policy_records_abstention_separately():
     assert result["counts"] == dict(synthetic_signals=1, low_synthetic_signals=1, inconclusive=2)
     assert result["decisive_fraction"] == 0.5
     assert result["selective_accuracy"] == 1.0
+
+
+def test_training_resume_matches_uninterrupted_weights(tmp_path, monkeypatch):
+    torch = pytest.importorskip("torch")
+    pytest.importorskip("sklearn")
+    from types import SimpleNamespace
+    from torch.utils.data import DataLoader
+    from training import train
+    from training.networks import EfficientBaseline
+
+    torch.set_num_threads(2)
+    manifest, _ = make_manifest(tmp_path)
+    # Exercise the real optimizer/model with deterministic small code fixtures.
+    monkeypatch.setattr(train, "EfficientBaseline", lambda pretrained: EfficientBaseline(pretrained=False))
+
+    def loader(*args, **kwargs):
+        return DataLoader(*args, **dict(kwargs, num_workers=0))
+
+    monkeypatch.setattr(train, "DataLoader", loader)
+    args = SimpleNamespace(
+        manifest=manifest,
+        output=tmp_path / "continuous",
+        seed=7,
+        require_t4=False,
+        frames=1,
+        epochs=2,
+        head_epochs=1,
+        batch_size=2,
+        resume=False,
+    )
+    train.main(args)
+    args.output = tmp_path / "interrupted"
+    save = train.atomic_save
+
+    def interrupt_after_snapshot(value, path):
+        save(value, path)
+        if path.name == "baseline-training-state.pt":
+            raise RuntimeError("simulated interruption after durable snapshot")
+
+    monkeypatch.setattr(train, "atomic_save", interrupt_after_snapshot)
+    with pytest.raises(RuntimeError, match="simulated interruption"):
+        train.main(args)
+    monkeypatch.setattr(train, "atomic_save", save)
+    args.resume = True
+    train.main(args)
+    for name in ["baseline.pt", "deep_mlp.pt", "fusion.pt"]:
+        expected = torch.load(tmp_path / "continuous" / name, weights_only=True)
+        actual = torch.load(args.output / name, weights_only=True)
+        assert actual.keys() == expected.keys()
+        assert all(torch.equal(actual[key], expected[key]) for key in expected), name

@@ -56,6 +56,14 @@ Training samples eight frames per video, uses class-weighted binary cross entrop
 and chooses checkpoints on validation data only. Test aggregation is the mean of
 every frame's sigmoid score at a threshold fixed at 0.5. No test threshold tuning.
 
+Each baseline epoch saves an atomic recovery snapshot with current and best
+weights, optimizer, AMP scaler, completed history and Python/NumPy/Torch/CUDA RNG
+states. `training.train --resume` requires the same manifest, settings, code and
+runtime. It restores baseline epochs; the short MLP stages restart from their
+fixed seed if interrupted. The CPU regression verifies exact resumed vs continuous
+weights for the backbone and both heads. `training.campaign --resume` applies both
+training and benchmark recovery, then exports the matching final artifacts.
+
 The benchmark records accuracy, balanced accuracy, AUROC, F1, log loss, confusion
 matrix, per-method results, group-bootstrap paired accuracy difference, median and
 p95 clip latency, aggregate FPS and inferred/skipped frame counts. Warm FP32 wall
