@@ -48,6 +48,7 @@ python scripts/prepare_ff_c23.py data/ff-c23 --test-pairs 20
 python -m training.train data/ff-c23/manifest.csv runs/ff-c23 --require-t4
 python -m training.benchmark data/ff-c23/manifest.csv runs/ff-c23 --require-t4
 python -m training.export data/ff-c23/manifest.csv runs/ff-c23
+python -m training.plots runs/ff-c23
 ```
 
 Training samples eight frames per video, uses class-weighted binary cross entropy,
@@ -98,3 +99,20 @@ AI-generated videos. V2 needs a separately labeled real/generated video dataset,
 source/prompt-disjoint splits, temporal pHash features and its own held-out report.
 Do not rename the FF++ result as AI-video accuracy. Preserve this baseline and
 evaluate V2 separately before promotion.
+
+## Application installation
+
+After the complete measured bundle has been downloaded:
+
+```powershell
+python scripts/install_fusion.py C:/path/to/extracted/run
+$env:AUTHENFY_ENGINE = 'fusion'
+waitress-serve --host=127.0.0.1 --port=5000 app:app
+```
+
+The installer checks the ONNX, card, training and benchmark hashes. The selected
+fusion engine fails explicitly when its model is missing rather than falling
+back to the earlier ViT/CLIP service. Application inference uses CPU ONNX, all
+decoded video frames, batches of eight, guarded pHash reuse and the existing
+isolated 90-second deadline. Videos are capped at 3,600 frames and 120 seconds.
+Application CPU time is separate from the T4 experiment's GPU speed measurements.

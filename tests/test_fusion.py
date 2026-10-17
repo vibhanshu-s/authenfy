@@ -163,3 +163,49 @@ def test_all_frame_benchmark_and_temporal_weighting(tmp_path):
         assert result["frames"] == 25
         assert result["inferred_frames"] == expected
         assert result["score"] == 0.5
+
+
+def test_fusion_service_streams_every_frame_and_discloses_reuse(tmp_path):
+    import cv2
+    from types import SimpleNamespace
+    from authenfy.fusion_analysis import analyze_fusion
+
+    path = tmp_path / "stream.avi"
+    writer = cv2.VideoWriter(str(path), cv2.VideoWriter_fourcc(*"MJPG"), 10, (64, 64))
+    for _ in range(25):
+        writer.write(np.full((64, 64, 3), 128, np.uint8))
+    writer.release()
+    sizes = []
+
+    def predict(pixels, crafted):
+        sizes.append(len(pixels))
+        assert len(pixels) == len(crafted)
+        return [0.1] * len(pixels)
+
+    engine = SimpleNamespace(identity={"id": "unit-test-stub"}, predict_inputs=predict)
+    result = analyze_fusion(path, engine)
+    assert len(result["frames"]) == 25
+    assert result["unique_frames_analyzed"] == 3
+    assert result["phash_reused_frames"] == 22
+    assert result["frames"][-1]["timestamp_seconds"] == 2.4
+    assert result["verdict"] == "inconclusive"
+    assert sum(sizes) == 3
+
+
+def test_fusion_mode_never_silently_falls_back_to_legacy(tmp_path):
+    from app import create_app
+
+    app = create_app(
+        dict(
+            TESTING=True,
+            ENGINE="fusion",
+            FUSION_DIR=str(tmp_path / "absent"),
+            DATABASE=str(tmp_path / "receipts.db"),
+            SIGNING_KEY_PATH=str(tmp_path / "key"),
+        )
+    )
+    client = app.test_client()
+    response = client.get("/health")
+    assert response.status_code == 503
+    assert response.json["code"] == "model_unavailable"
+    assert b"EfficientNet-B0" in client.get("/").data

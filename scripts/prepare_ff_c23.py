@@ -1,7 +1,7 @@
 """Download the user's Kaggle FF++ C23 files with official pair-disjoint splits.
 
 Google's separate DeepFakeDetection subset is excluded: its actor IDs are not FF++ IDs.
-Download is file-by-file, no credentials required for this public dataset.
+Bulk download avoids per-file request throttling. No credentials are required.
 """
 
 import argparse
