@@ -12,3 +12,8 @@ private/
 *.onnx
 *.safetensors
 node_modules/
+data/
+runs/
+*.pt
+*.pth
+*.npz

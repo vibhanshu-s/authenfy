@@ -1,0 +1,7 @@
+# Install in a separate environment. Colab may use its preinstalled CUDA torch pair;
+# every experiment records exact installed versions and hardware.
+-r requirements.txt
+torch==2.8.0
+torchvision==0.23.0
+scikit-learn==1.7.2
+onnx==1.19.1
