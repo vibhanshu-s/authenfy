@@ -37,7 +37,8 @@ class FusionHead(nn.Module):
 
     def fit_normalizer(self, train_features):
         self.mean.copy_(train_features.mean(0))
-        self.scale.copy_(train_features.std(0, unbiased=False).clamp_min(1e-5))
+        scale = train_features.std(0, unbiased=False)
+        self.scale.copy_(torch.where(scale < 1e-5, torch.ones_like(scale), scale))
 
     def forward(self, features):
         return self.layers((features - self.mean) / self.scale).squeeze(1)

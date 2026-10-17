@@ -91,6 +91,7 @@ def test_normalizer_uses_only_provided_training_features():
     head = FusionHead(2)
     head.fit_normalizer(torch.tensor([[1.0, 5.0], [3.0, 5.0]]))
     assert torch.equal(head.mean, torch.tensor([2.0, 5.0]))
+    assert torch.equal(head.scale, torch.tensor([1.0, 1.0]))
     assert torch.isfinite(head(torch.tensor([[100.0, -50.0]]))).all()
 
 

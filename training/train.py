@@ -6,6 +6,7 @@ Test media hashes are verified; test features/scores are never used by training.
 
 import argparse
 import copy
+from concurrent.futures import ThreadPoolExecutor
 import importlib.metadata
 import json
 from pathlib import Path
@@ -15,6 +16,7 @@ import subprocess
 import time
 
 import numpy as np
+import cv2
 from PIL import Image
 import torch
 from torch import nn
@@ -42,9 +44,12 @@ def runtime_identity():
         python=platform.python_version(),
         device=torch.cuda.get_device_name() if torch.cuda.is_available() else "CPU",
         cuda=torch.version.cuda,
+        cudnn=torch.backends.cudnn.version(),
+        opencv=cv2.__version__,
         hardware=hardware(),
         packages={
-            k: importlib.metadata.version(k) for k in ["torch", "torchvision", "numpy", "Pillow", "scikit-learn"]
+            k: importlib.metadata.version(k)
+            for k in ["torch", "torchvision", "numpy", "Pillow", "scikit-learn", "onnx", "onnxruntime"]
         },
         git_commit=subprocess.run(["git", "rev-parse", "HEAD"], text=True, capture_output=True).stdout.strip(),
     )
@@ -52,8 +57,9 @@ def runtime_identity():
 
 def prepare_cache(rows, root, count):
     root.mkdir(parents=True, exist_ok=True)
-    samples = []
-    for number, row in enumerate(rows):
+    started = time.perf_counter()
+
+    def cache_one(row):
         directory = root / (row["sha256"] + f"-{count}")
         marker = directory / "complete.json"
         if not marker.exists():
@@ -62,15 +68,31 @@ def prepare_cache(rows, root, count):
             paths = []
             for i, frame in enumerate(frames):
                 path = directory / f"{i:03}.png"
-                rgb_input(frame).save(path)
+                rgb_input(frame).save(path, compress_level=1)
                 paths.append(path.name)
             marker.write_text(json.dumps(paths))
         paths = json.loads(marker.read_text())
-        samples.extend(
-            dict(path=str(directory / p), label=row["label"], video=row["path"], split=row["split"]) for p in paths
-        )
-        if (number + 1) % 100 == 0:
-            print(f"cached {number + 1}/{len(rows)} training/validation videos", flush=True)
+        return row["sha256"], [str(directory / p) for p in paths]
+
+    unique_rows = list({row["sha256"]: row for row in rows}.values())
+    cached = {}
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        for number, (digest, paths) in enumerate(pool.map(cache_one, unique_rows), 1):
+            cached[digest] = paths
+            if number % 25 == 0 or number == len(unique_rows):
+                progress = dict(
+                    stage="crop_cache",
+                    completed=number,
+                    total=len(unique_rows),
+                    elapsed_seconds=time.perf_counter() - started,
+                )
+                (root.parent / "cache-progress.json").write_text(json.dumps(progress))
+                print(f"cached {number}/{len(unique_rows)} unique training/validation videos", flush=True)
+    samples = [
+        dict(path=p, label=row["label"], video=row["path"], split=row["split"])
+        for row in rows
+        for p in cached[row["sha256"]]
+    ]
     return samples
 
 

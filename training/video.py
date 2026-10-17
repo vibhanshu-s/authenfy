@@ -37,18 +37,22 @@ def sample_frames(path, count=8):
     path = Path(path)
     if path.suffix.lower() in IMAGE_EXTENSIONS:
         return [image for _, image in iter_frames(path)]
-    capture = cv2.VideoCapture(str(path))
+    # Decode once instead of replaying H.264 GOPs for eight random seeks.
+    capture = cv2.VideoCapture(str(path), cv2.CAP_FFMPEG, [cv2.CAP_PROP_N_THREADS, 1])
     try:
         size = int(capture.get(cv2.CAP_PROP_FRAME_COUNT))
         if not capture.isOpened() or size < 1:
             raise ValueError(f"Cannot decode {path.name}")
         result = []
-        for index in np.linspace(0, size - 1, min(size, count), dtype=int):
-            capture.set(cv2.CAP_PROP_POS_FRAMES, int(index))
-            ok, bgr = capture.read()
-            if not ok:
+        targets = set(np.linspace(0, size - 1, min(size, count), dtype=int))
+        for index in range(max(targets) + 1):
+            if not capture.grab():
                 raise ValueError(f"Cannot decode training frame {path.name}:{index}")
-            result.append(Image.fromarray(cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)))
+            if index in targets:
+                ok, bgr = capture.retrieve()
+                if not ok:
+                    raise ValueError(f"Cannot retrieve training frame {path.name}:{index}")
+                result.append(Image.fromarray(cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)))
         return result
     finally:
         capture.release()

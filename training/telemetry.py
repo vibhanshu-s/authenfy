@@ -39,7 +39,10 @@ def hardware():
             gpu_total_bytes=properties.total_memory, gpu_compute_capability=list(torch.cuda.get_device_capability())
         )
         r = subprocess.run(
-            ["nvidia-smi", "--query-gpu=driver_version", "--format=csv,noheader"], capture_output=True, text=True
+            ["nvidia-smi", "--query-gpu=driver_version", "--format=csv,noheader"],
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         result["driver_version"] = r.stdout.strip() if r.returncode == 0 else None
     return result
