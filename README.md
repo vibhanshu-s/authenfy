@@ -1,5 +1,7 @@
 # Authenfy
 
+The project's clarified EfficientNet-B0 + DCT + pHash -> MLP implementation and controlled T4 experiment are in [docs/EFFICIENTNET_EXPERIMENT.md](docs/EFFICIENTNET_EXPERIMENT.md) and [notebooks/Authenfy_EfficientNet_Fusion_T4.ipynb](notebooks/Authenfy_EfficientNet_Fusion_T4.ipynb). Training/evaluation results will be recorded before promotion; the descriptions below document the earlier engine. Select `AUTHENFY_ENGINE=fusion` to serve an installed validated fusion model.
+
 A local media inspection app with separate generated-image and facial-manipulation screening, sampled video evidence, and signed exact-file receipts. Flask + native HTML/CSS/JavaScript; ONNX inference runs on the server. Model development and numerical checks use a Colab T4.
 
 **An analysis score is not proof that media is real or fake.** The original repository could not start because its detector was missing and its root template did not exist. This rebuild supplies a functioning baseline, bounded decoding, honest coverage states and reproducible verification.
