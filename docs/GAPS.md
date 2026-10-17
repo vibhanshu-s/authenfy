@@ -10,7 +10,8 @@ historical evidence, not a result for this fine-tuned architecture.
 
 | Gap | V1 work | Status |
 |---|---|---|
-| Lost training weights and no reproducible training | ImageNet-initialized EfficientNet fine-tuning; frozen-backbone deep/fused MLP controls; pinned source-pair manifest | Full T4 training run in progress |
+| Lost training weights and no reproducible training | ImageNet-initialized EfficientNet fine-tuning; frozen-backbone deep/fused MLP controls; pinned source-pair manifest | T4 runtime reset during preparation; dataset restoration in progress; completed fine-tuning pending |
+| Temporary Colab storage loses progress after runtime replacement | Persistent checked crop archives, epoch snapshots and completed-stage copies; empty-directory restore and corruption checks | Implemented and locally tested; active Drive mount awaiting Google authorization |
 | No comparable accuracy/speed record | Four arms on identical held-out complete clips; three rotated timing repeats; raw predictions and all timing components | Full held-out measurements pending |
 | Inference path can disagree with training features | Shared crop, DCT, pHash and normalization; CPU ONNX parity; trained export and benchmark hashes checked on installation | Implemented and code-tested; actual trained export pending |
 | pHash collisions and hidden skipped frames | RGB/DCT residual guards, 12-frame refresh and explicit approximate-reuse evidence; reused low-score clips abstain | Implemented; accuracy/speed tradeoff must be measured |
