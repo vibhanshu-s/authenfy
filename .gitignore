@@ -1,5 +1,14 @@
-# .gitignore
 .env
+.venv/
 __pycache__/
-*.pyc
-/models
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+artifacts/
+uploads/
+instance/*.sqlite*
+instance/*.key
+private/
+*.onnx
+*.safetensors
+node_modules/
