@@ -7,6 +7,8 @@ from pathlib import Path
 import subprocess
 import sys
 
+from training.recovery import RecoveryStore
+
 
 def main(args):
     args.run.mkdir(parents=True, exist_ok=True)
@@ -17,6 +19,8 @@ def main(args):
         ("plots", "training.plots", []),
         ("summary", "scripts/summarize_fusion.py", []),
     ]
+    if args.recovery_dir:
+        stages[0][2].extend(["--recovery-dir", str(args.recovery_dir)])
     state = dict(status="running", stages=[], started_utc=datetime.now(timezone.utc).isoformat())
     status_path = args.run / "campaign.json"
     for name, module, options in stages:
@@ -35,6 +39,8 @@ def main(args):
             state.update(status="failed", updated_utc=datetime.now(timezone.utc).isoformat())
             status_path.write_text(json.dumps(state, indent=2))
             return result.returncode
+        if args.recovery_dir:
+            RecoveryStore(args.recovery_dir).snapshot(args.run)
     state.update(status="complete", updated_utc=datetime.now(timezone.utc).isoformat())
     status_path.write_text(json.dumps(state, indent=2))
     return 0
@@ -45,4 +51,5 @@ if __name__ == "__main__":
     parser.add_argument("manifest", type=Path)
     parser.add_argument("run", type=Path)
     parser.add_argument("--resume", action="store_true", help="Restore matching training and benchmark progress")
+    parser.add_argument("--recovery-dir", type=Path, help="Persistent backup storage; copied only outside measured clip timings")
     raise SystemExit(main(parser.parse_args()))

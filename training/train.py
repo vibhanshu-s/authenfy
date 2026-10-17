@@ -27,6 +27,7 @@ from training.manifest import file_sha, load_manifest
 from training.checkpoints import atomic_save, restore_rng, rng_state
 from training.metrics import binary_metrics
 from training.networks import EfficientBaseline, FusionHead
+from training.recovery import RecoveryStore
 from training.telemetry import hardware, resources
 from training.video import sample_frames
 
@@ -56,7 +57,7 @@ def runtime_identity():
     )
 
 
-def prepare_cache(rows, root, count):
+def prepare_cache(rows, root, count, recovery=None):
     root.mkdir(parents=True, exist_ok=True)
     started = time.perf_counter()
 
@@ -90,6 +91,8 @@ def prepare_cache(rows, root, count):
     with ThreadPoolExecutor(max_workers=2) as pool:
         for number, (digest, paths) in enumerate(pool.map(cache_one, unique_rows), 1):
             cached[digest] = paths
+            if recovery is not None:
+                recovery.cache(Path(paths[0]).parent)
             if number % 25 == 0 or number == len(unique_rows):
                 progress = dict(
                     stage="crop_cache",
@@ -99,6 +102,8 @@ def prepare_cache(rows, root, count):
                 )
                 (root.parent / "cache-progress.json").write_text(json.dumps(progress))
                 print(f"cached {number}/{len(unique_rows)} unique training/validation videos", flush=True)
+    if recovery is not None:
+        recovery.flush_cache()
     samples = [
         dict(path=p, label=row["label"], video=row["path"], split=row["split"])
         for row in rows
@@ -283,9 +288,19 @@ def main(args):
     (args.output / "training.json").write_text(json.dumps(config, indent=2))
     train_val = [r for r in rows if r["split"] != "test"]
     cache_start = time.perf_counter()
-    cache = prepare_cache(train_val, args.output / "crop-cache", args.frames)
+    recovery_directory = getattr(args, "recovery_dir", None)
+    recovery = RecoveryStore(recovery_directory) if recovery_directory else None
+    if recovery is not None:
+        recovery.snapshot(args.output)
+    cache = prepare_cache(train_val, args.output / "crop-cache", args.frames, recovery)
     config.setdefault("cache_preparation_attempt_seconds", []).append(time.perf_counter() - cache_start)
     config["crop_cache_seconds"] = sum(config["cache_preparation_attempt_seconds"])
+    config["persistent_recovery"] = dict(
+        enabled=recovery is not None,
+        cache_videos_per_archive=128 if recovery is not None else None,
+        training_duration_includes_backup_io=recovery is not None,
+        benchmark_backups="between stages only; no backup I/O during measured clip timings",
+    )
     split_rows = {s: [r for r in cache if r["split"] == s] for s in ["train", "val"]}
     loaders = {
         s: DataLoader(CropDataset(split_rows[s]), batch_size=args.batch_size, shuffle=False, num_workers=2)
@@ -371,6 +386,8 @@ def main(args):
             state_path,
         )
         (args.output / "training.json").write_text(json.dumps(config, indent=2))
+        if recovery is not None:
+            recovery.snapshot(args.output)
         print(
             json.dumps(
                 dict(
@@ -414,6 +431,8 @@ def main(args):
         resume_snapshot_bytes=state_path.stat().st_size,
     )
     (args.output / "training.json").write_text(json.dumps(config, indent=2))
+    if recovery is not None:
+        recovery.snapshot(args.output)
     print("TRAINING_COMPLETE", flush=True)
 
 
@@ -427,6 +446,7 @@ if __name__ == "__main__":
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--seed", type=int, default=20261017)
     parser.add_argument("--require-t4", action="store_true")
+    parser.add_argument("--recovery-dir", type=Path, help="Persistent backup destination for crop archives and completed epochs")
     parser.add_argument(
         "--resume",
         action="store_true",

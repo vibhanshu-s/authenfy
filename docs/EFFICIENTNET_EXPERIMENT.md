@@ -64,6 +64,32 @@ fixed seed if interrupted. The CPU regression verifies exact resumed vs continuo
 weights for the backbone and both heads. `training.campaign --resume` applies both
 training and benchmark recovery, then exports the matching final artifacts.
 
+Colab's `/content` disk is temporary. An epoch snapshot on that disk does not
+survive runtime replacement. After authorizing Google Drive in the notebook, pass
+`--recovery-dir /content/drive/MyDrive/Authenfy/v1-recovery` to training or the
+campaign. Training publishes checksummed archives of every 128 prepared videos
+and verified checkpoint copies after each completed baseline epoch and after both
+heads finish. Partial archives never enter the committed backup index. Recovery
+copies add overhead to the recorded training duration. The campaign also backs up
+completed stage artifacts; no copying occurs during benchmark clip timings.
+
+After a reset, check out the same pinned code revision, prepare the same dataset,
+and restore into an empty local run directory:
+
+```text
+python -m training.recovery /content/drive/MyDrive/Authenfy/v1-recovery runs/ff-c23
+python -m training.campaign data/ff-c23/manifest.csv runs/ff-c23 --resume --recovery-dir /content/drive/MyDrive/Authenfy/v1-recovery
+```
+
+Recovery validates file hashes and refuses to overwrite a populated local run.
+The training resume checks still require matching code, software, hardware and
+settings. A changed environment fails explicitly. Keep the saved revision and
+runtime record; do not silently combine incompatible runs. Dataset source videos
+are downloaded again when needed; the persistent backup contains sampled crops
+and model/results files. Check Drive capacity before a full run. The tests exercise
+restoring into a new directory, completed training recovery, corrupt backups and
+unsafe archive paths. They are code checks, not held-out accuracy measurements.
+
 The benchmark records accuracy, balanced accuracy, AUROC, F1, log loss, confusion
 matrix, per-method results, group-bootstrap paired accuracy difference, median and
 p95 clip latency, aggregate FPS and inferred/skipped frame counts. Warm FP32 wall

@@ -301,6 +301,8 @@ def test_review_policy_records_abstention_separately():
 
 
 def test_training_resume_matches_uninterrupted_weights(tmp_path, monkeypatch):
+    import json
+
     torch = pytest.importorskip("torch")
     pytest.importorskip("sklearn")
     from types import SimpleNamespace
@@ -327,9 +329,19 @@ def test_training_resume_matches_uninterrupted_weights(tmp_path, monkeypatch):
         head_epochs=1,
         batch_size=2,
         resume=False,
+        recovery_dir=tmp_path / "persistent",
     )
     train.main(args)
+    from training.recovery import RecoveryStore
+
+    args.output = tmp_path / "replacement-runtime"
+    RecoveryStore(args.recovery_dir).restore(args.output)
+    args.resume = True
+    train.main(args)
+    assert json.loads((args.output / "training.json").read_text())["status"] == "trained"
     args.output = tmp_path / "interrupted"
+    args.resume = False
+    args.recovery_dir = None
     save = train.atomic_save
 
     def interrupt_after_snapshot(value, path):
