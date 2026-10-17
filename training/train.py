@@ -63,7 +63,16 @@ def prepare_cache(rows, root, count):
     def cache_one(row):
         directory = root / (row["sha256"] + f"-{count}")
         marker = directory / "complete.json"
-        if not marker.exists():
+        try:
+            paths = json.loads(marker.read_text())
+            valid = (
+                isinstance(paths, list)
+                and 0 < len(paths) <= count
+                and all(isinstance(p, str) and Path(p).name == p and (directory / p).is_file() for p in paths)
+            )
+        except (OSError, ValueError, TypeError):
+            valid = False
+        if not valid:
             directory.mkdir(exist_ok=True)
             frames = sample_frames(row["absolute_path"], count)
             paths = []
@@ -71,8 +80,9 @@ def prepare_cache(rows, root, count):
                 path = directory / f"{i:03}.png"
                 rgb_input(frame).save(path, compress_level=1)
                 paths.append(path.name)
-            marker.write_text(json.dumps(paths))
-        paths = json.loads(marker.read_text())
+            temporary = marker.with_suffix(".partial")
+            temporary.write_text(json.dumps(paths))
+            temporary.replace(marker)
         return row["sha256"], [str(directory / p) for p in paths]
 
     unique_rows = list({row["sha256"]: row for row in rows}.values())

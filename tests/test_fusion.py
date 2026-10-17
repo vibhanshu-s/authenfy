@@ -348,3 +348,20 @@ def test_training_resume_matches_uninterrupted_weights(tmp_path, monkeypatch):
         actual = torch.load(args.output / name, weights_only=True)
         assert actual.keys() == expected.keys()
         assert all(torch.equal(actual[key], expected[key]) for key in expected), name
+
+
+def test_cache_recovers_partial_markers_and_missing_crops(tmp_path):
+    pytest.importorskip("torch")
+    from training.train import prepare_cache
+    from authenfy.fusion_features import rgb_input
+
+    manifest, _ = make_manifest(tmp_path)
+    rows = load_manifest(manifest)
+    root = tmp_path / "cache"
+    first = prepare_cache(rows, root, 1)
+    (root / f"{rows[0]['sha256']}-1" / "complete.json").write_text("[")
+    __import__("pathlib").Path(first[1]["path"]).unlink()
+    recovered = prepare_cache(rows, root, 1)
+    for source, cached in zip(rows, recovered, strict=True):
+        with Image.open(source["absolute_path"]) as original, Image.open(cached["path"]) as image:
+            np.testing.assert_array_equal(np.asarray(image), np.asarray(rgb_input(original)))
