@@ -2,6 +2,26 @@
 
 Audit baseline: upstream commit `b1e19d088177a0991ebbfaba89b820cd08baaa90`.
 
+## Fine-tuned v1
+
+The active development target is EfficientNet-B0 + DCT + pHash into an MLP.
+AI-video work is deferred. The earlier pretrained engine's audit below is
+historical evidence, not a result for this fine-tuned architecture.
+
+| Gap | V1 work | Status |
+|---|---|---|
+| Lost training weights and no reproducible training | ImageNet-initialized EfficientNet fine-tuning; frozen-backbone deep/fused MLP controls; pinned source-pair manifest | Full T4 training run in progress |
+| No comparable accuracy/speed record | Four arms on identical held-out complete clips; three rotated timing repeats; raw predictions and all timing components | Full held-out measurements pending |
+| Inference path can disagree with training features | Shared crop, DCT, pHash and normalization; CPU ONNX parity; trained export and benchmark hashes checked on installation | Implemented and code-tested; actual trained export pending |
+| pHash collisions and hidden skipped frames | RGB/DCT residual guards, 12-frame refresh and explicit approximate-reuse evidence; reused low-score clips abstain | Implemented; accuracy/speed tradeoff must be measured |
+| Confounded or inflated headline accuracy | Source-pair separation, both source IDs checked, fixed test subset, balanced metrics, 83.33% majority-class control, source-group intervals | Protocol implemented; identity/YouTube-source separation remains unverified |
+| Incomplete result preservation | Epoch/config/runtime records, frame/video scores, per-method metrics, calibration, resource snapshots, CSV timing repeats, curves and provenance | Recording implemented; result bundle pending |
+| Face localization and deployment calibration | Current engine explicitly discloses full-frame center-crop screening and uncalibrated review bands | Open; do not claim face localization or deployment confidence |
+
+See [EFFICIENTNET_EXPERIMENT.md](EFFICIENTNET_EXPERIMENT.md) for exact scope.
+
+## Earlier pretrained engine
+
 | Priority | Original gap | Work and evidence | Status |
 | --- | --- | --- | --- |
 | P0 | Missing `models.detects` / `models.detect` implementation; models ignored by Git | Pinned checksummed ONNX model, reproducible downloader, explicit 503 for missing or corrupt weights | Fixed |
