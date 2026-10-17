@@ -3,26 +3,78 @@
 import numpy as np
 
 
-def binary_metrics(labels, scores, threshold=0.5):
+def binary_metrics(labels, scores, threshold=0.5, include_curves=False):
     from sklearn.metrics import (
         accuracy_score,
+        average_precision_score,
         balanced_accuracy_score,
+        brier_score_loss,
+        classification_report,
+        cohen_kappa_score,
         confusion_matrix,
         f1_score,
         log_loss,
+        matthews_corrcoef,
+        precision_recall_curve,
+        precision_score,
+        recall_score,
         roc_auc_score,
+        roc_curve,
     )
 
     labels, scores = np.asarray(labels), np.asarray(scores)
+    if not len(labels) or not np.isfinite(scores).all() or np.any((scores < 0) | (scores > 1)):
+        raise ValueError("Invalid scores for metrics")
     predicted = scores >= threshold
     tn, fp, fn, tp = confusion_matrix(labels, predicted, labels=[0, 1]).ravel()
+    bins, ece = [], 0.0
+    for i in range(10):
+        mask = (scores >= i / 10) & (scores < (i + 1) / 10 if i < 9 else scores <= 1)
+        count = int(mask.sum())
+        mean_score = float(scores[mask].mean()) if count else None
+        fraction_positive = float(labels[mask].mean()) if count else None
+        bins.append(
+            dict(low=i / 10, high=(i + 1) / 10, count=count, mean_score=mean_score, fraction_positive=fraction_positive)
+        )
+        if count:
+            ece += count / len(labels) * abs(mean_score - fraction_positive)
+    curves = None
+    if len(np.unique(labels)) == 2:
+        fpr, tpr, thresholds = roc_curve(labels, scores)
+        precision, recall, pr_thresholds = precision_recall_curve(labels, scores)
+        curves = dict(
+            roc=dict(
+                fpr=fpr.tolist(),
+                tpr=tpr.tolist(),
+                thresholds=[float(x) if np.isfinite(x) else None for x in thresholds],
+            ),
+            pr=dict(precision=precision.tolist(), recall=recall.tolist(), thresholds=pr_thresholds.tolist()),
+        )
     return dict(
         count=len(labels),
+        class_counts={"real": int((labels == 0).sum()), "fake": int((labels == 1).sum())},
         accuracy=float(accuracy_score(labels, predicted)),
         balanced_accuracy=float(balanced_accuracy_score(labels, predicted)),
         auroc=float(roc_auc_score(labels, scores)) if len(np.unique(labels)) == 2 else None,
         f1=float(f1_score(labels, predicted, zero_division=0)),
+        macro_f1=float(f1_score(labels, predicted, average="macro", zero_division=0)),
+        weighted_f1=float(f1_score(labels, predicted, average="weighted", zero_division=0)),
+        precision=float(precision_score(labels, predicted, zero_division=0)),
+        recall=float(recall_score(labels, predicted, zero_division=0)),
+        specificity=float(tn / (tn + fp)) if tn + fp else None,
+        negative_predictive_value=float(tn / (tn + fn)) if tn + fn else None,
+        matthews_correlation=float(matthews_corrcoef(labels, predicted)),
+        cohen_kappa=float(cohen_kappa_score(labels, predicted)) if len(np.unique(labels)) == 2 else None,
+        average_precision=float(average_precision_score(labels, scores)) if curves else None,
+        pr_auc_trapezoid=float(-np.trapezoid(curves["pr"]["precision"], curves["pr"]["recall"])) if curves else None,
         log_loss=float(log_loss(labels, np.clip(scores, 1e-7, 1 - 1e-7), labels=[0, 1])),
+        brier_score=float(brier_score_loss(labels, scores)),
+        expected_calibration_error_10bins=ece,
+        calibration_bins=bins,
+        classification_report=classification_report(
+            labels, predicted, labels=[0, 1], target_names=["real", "fake"], zero_division=0, output_dict=True
+        ),
+        curves=curves if include_curves else None,
         threshold=threshold,
         confusion_matrix=dict(tn=int(tn), fp=int(fp), fn=int(fn), tp=int(tp)),
         false_positive_rate=float(fp / (fp + tn)) if fp + tn else None,

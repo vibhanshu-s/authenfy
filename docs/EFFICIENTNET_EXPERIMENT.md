@@ -65,6 +65,32 @@ Artifacts: `training.json`, three `.pt` checkpoints, `benchmark.json`,
 `benchmark.md`, `efficientnet-fusion.onnx`, and `model-card.json`.
 An empty result or a code smoke test must never be reported as measured accuracy.
 
+## Complete metric record
+
+`benchmark.json` includes video and descriptive frame metrics: accuracy, balanced
+accuracy, precision, recall/sensitivity, specificity, negative predictive value,
+binary/macro/weighted F1, AUROC, average precision, trapezoidal PR-AUC, log loss,
+Brier score, 10-bin expected calibration error, calibration bins, MCC, Cohen kappa,
+per-class report, class counts and confusion matrix. Video ROC and PR curves are
+stored with the scores, and method-specific video summaries use the same real
+control videos. Frames are correlated and are not independent statistical trials.
+
+`video-predictions.csv` contains every held-out video, source group and model
+score. `frame-predictions.npz` preserves all first-repeat frame scores, labels and
+video offsets, with a hash in the report. `timings.csv` records every video/arm/
+repeat: decode, visual features, synchronized model/transfer time, CPU time,
+decoded and inferred frames, wall time and FPS. Summaries include p50/p90/p95/p99
+clip latency, mean/std/min/max, aggregate FPS, skip fraction and component totals.
+
+Resource records include PyTorch peak allocated/reserved GPU memory and observed
+process RSS. These are explicitly not full-machine peak memory. Energy and GPU
+utilization are marked unmeasured because extra polling would perturb timings.
+Training saves per-epoch loss, full validation metrics, learning rates, duration,
+resource snapshots, parameter counts, class counts, checkpoint sizes and hashes,
+preprocessing/split versions, seed, augmentation, optimizer settings, AMP status,
+software versions and hardware. `python -m training.plots runs/ff-c23` exports
+learning curves, ROC/PR/calibration plots, confusion matrices and speed comparisons.
+
 ## V2 scope
 
 FF++ contains facial manipulation examples; it cannot establish detection of fully

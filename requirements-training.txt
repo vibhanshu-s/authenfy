@@ -5,3 +5,5 @@ torch==2.8.0
 torchvision==0.23.0
 scikit-learn==1.7.2
 onnx==1.19.1
+psutil==7.2.2
+matplotlib==3.10.7

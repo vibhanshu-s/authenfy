@@ -1,7 +1,7 @@
 """Fine-tune B0, freeze the best backbone, then train deep-only/fused MLPs.
 
 Usage: python -m training.train data/ff-c23/manifest.csv runs/ff-c23 --require-t4
-Test data is never opened by this command. Test evaluation is a separate command.
+Test media hashes are verified; test features/scores are never used by training.
 """
 
 import argparse
@@ -24,6 +24,7 @@ from authenfy.fusion_features import FEATURE_VERSION, MEAN, STD, frequency_featu
 from training.manifest import file_sha, load_manifest
 from training.metrics import binary_metrics
 from training.networks import EfficientBaseline, FusionHead
+from training.telemetry import hardware, resources
 from training.video import sample_frames
 
 
@@ -41,6 +42,7 @@ def runtime_identity():
         python=platform.python_version(),
         device=torch.cuda.get_device_name() if torch.cuda.is_available() else "CPU",
         cuda=torch.version.cuda,
+        hardware=hardware(),
         packages={
             k: importlib.metadata.version(k) for k in ["torch", "torchvision", "numpy", "Pillow", "scikit-learn"]
         },
@@ -125,6 +127,7 @@ def train_head(x, y, val_x, val_y, val_rows, dimension, epochs, device, seed):
     loader = DataLoader(TensorDataset(x[:, :dimension], y), batch_size=128, shuffle=True)
     best, best_state, history = float("inf"), None, []
     for epoch in range(epochs):
+        epoch_start = time.perf_counter()
         head.train()
         losses = []
         for features, label in loader:
@@ -137,11 +140,32 @@ def train_head(x, y, val_x, val_y, val_rows, dimension, epochs, device, seed):
         with torch.inference_mode():
             predictions = head(val_x[:, :dimension].to(device)).sigmoid().cpu().numpy()
         metrics = video_metrics(val_rows, predictions)
-        history.append(dict(epoch=epoch + 1, train_loss=float(np.mean(losses)), val=metrics))
+        history.append(
+            dict(
+                epoch=epoch + 1,
+                train_loss=float(np.mean(losses)),
+                val=metrics,
+                epoch_seconds=time.perf_counter() - epoch_start,
+                learning_rate=optimizer.param_groups[0]["lr"],
+                resources=resources(),
+            )
+        )
         if metrics["log_loss"] < best:
             best, best_state = metrics["log_loss"], copy.deepcopy(head.cpu().state_dict())
             head.to(device)
-        print(json.dumps(dict(stage=f"head-{dimension}", **history[-1])), flush=True)
+        print(
+            json.dumps(
+                dict(
+                    stage=f"head-{dimension}",
+                    epoch=epoch + 1,
+                    train_loss=history[-1]["train_loss"],
+                    val_accuracy=metrics["accuracy"],
+                    val_auroc=metrics["auroc"],
+                    val_log_loss=metrics["log_loss"],
+                )
+            ),
+            flush=True,
+        )
     head.load_state_dict(best_state)
     return head.cpu(), history
 
@@ -169,10 +193,28 @@ def main(args):
         status="training",
         threshold=0.5,
         test_used_for_selection=False,
+        split_classes={
+            s: {kind: sum(r["split"] == s and r["kind"] == kind for r in rows) for kind in ["real", "manipulated"]}
+            for s in ["train", "val", "test"]
+        },
+        optimizer={
+            "name": "AdamW",
+            "backbone_lr": 1e-4,
+            "classifier_lr": 5e-4,
+            "weight_decay": 1e-4,
+            "head_lr": 3e-4,
+            "head_weight_decay": 1e-3,
+        },
+        augmentation="50% batch horizontal flip during baseline training only",
+        training_precision="CUDA automatic mixed precision" if device.type == "cuda" else "FP32",
+        initialized_from="torchvision EfficientNet_B0_Weights.IMAGENET1K_V1",
+        resources_start=resources(),
     )
     (args.output / "training.json").write_text(json.dumps(config, indent=2))
     train_val = [r for r in rows if r["split"] != "test"]
+    cache_start = time.perf_counter()
     cache = prepare_cache(train_val, args.output / "crop-cache", args.frames)
+    config["crop_cache_seconds"] = time.perf_counter() - cache_start
     split_rows = {s: [r for r in cache if r["split"] == s] for s in ["train", "val"]}
     loaders = {
         s: DataLoader(CropDataset(split_rows[s]), batch_size=args.batch_size, shuffle=False, num_workers=2)
@@ -182,6 +224,8 @@ def main(args):
         CropDataset(split_rows["train"]), batch_size=args.batch_size, shuffle=True, num_workers=2
     )
     model = EfficientBaseline(pretrained=True).to(device)
+    config["baseline_parameter_count"] = sum(p.numel() for p in model.parameters())
+    config["sampled_frame_counts"] = {s: len(v) for s, v in split_rows.items()}
     optimizer = torch.optim.AdamW(
         [
             dict(params=model.net.features.parameters(), lr=1e-4),
@@ -196,6 +240,7 @@ def main(args):
     history, best, best_epoch = [], float("inf"), None
     start = time.perf_counter()
     for epoch in range(args.epochs):
+        epoch_start = time.perf_counter()
         model.train()
         losses = []
         for pixels, _, labels in training_loader:
@@ -210,12 +255,36 @@ def main(args):
             scaler.update()
             losses.append(float(loss.detach()))
         metrics = video_metrics(split_rows["val"], predict_baseline(model, loaders["val"], device))
-        history.append(dict(epoch=epoch + 1, train_loss=float(np.mean(losses)), val=metrics))
+        history.append(
+            dict(
+                epoch=epoch + 1,
+                train_loss=float(np.mean(losses)),
+                val=metrics,
+                epoch_seconds=time.perf_counter() - epoch_start,
+                learning_rates=[g["lr"] for g in optimizer.param_groups],
+                resources=resources(),
+            )
+        )
         if metrics["log_loss"] < best:
             best, best_epoch = metrics["log_loss"], epoch + 1
             torch.save(model.cpu().state_dict(), args.output / "baseline.pt")
             model.to(device)
-        print(json.dumps(dict(stage="baseline", **history[-1])), flush=True)
+        config["baseline_history"] = history
+        (args.output / "training.json").write_text(json.dumps(config, indent=2))
+        print(
+            json.dumps(
+                dict(
+                    stage="baseline",
+                    epoch=epoch + 1,
+                    train_loss=history[-1]["train_loss"],
+                    val_accuracy=metrics["accuracy"],
+                    val_auroc=metrics["auroc"],
+                    val_log_loss=metrics["log_loss"],
+                    epoch_seconds=history[-1]["epoch_seconds"],
+                )
+            ),
+            flush=True,
+        )
     model.load_state_dict(torch.load(args.output / "baseline.pt", weights_only=True, map_location=device))
     model.eval()
     for parameter in model.parameters():
@@ -234,6 +303,10 @@ def main(args):
         training_seconds=round(time.perf_counter() - start, 3),
         baseline_history=history,
         head_history=head_history,
+        resources_end=resources(),
+        checkpoint_bytes={
+            f"{name}.pt": (args.output / f"{name}.pt").stat().st_size for name in ["baseline", "deep_mlp", "fusion"]
+        },
         weights_sha256={
             f"{name}.pt": file_sha(args.output / f"{name}.pt") for name in ["baseline", "deep_mlp", "fusion"]
         },

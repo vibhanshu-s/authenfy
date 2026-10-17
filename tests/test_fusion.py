@@ -94,6 +94,49 @@ def test_normalizer_uses_only_provided_training_features():
     assert torch.isfinite(head(torch.tensor([[100.0, -50.0]]))).all()
 
 
+def test_metrics_record_errors_and_calibration():
+    pytest.importorskip("sklearn")
+    from training.metrics import binary_metrics
+
+    result = binary_metrics([0, 0, 1, 1], [0.0, 0.6, 0.4, 1.0], include_curves=True)
+    assert result["accuracy"] == 0.5
+    assert result["precision"] == result["recall"] == result["specificity"] == 0.5
+    assert result["confusion_matrix"] == {"tn": 1, "fp": 1, "fn": 1, "tp": 1}
+    assert result["brier_score"] == pytest.approx(0.18)
+    assert sum(b["count"] for b in result["calibration_bins"]) == 4
+    import json
+
+    json.dumps(result, allow_nan=False)
+
+
+def test_efficientnet_onnx_export_parity(tmp_path):
+    torch = pytest.importorskip("torch")
+    pytest.importorskip("onnx")
+    import onnxruntime as ort
+    from training.networks import FusionModel
+
+    torch.set_num_threads(2)
+    torch.manual_seed(3)
+    model = FusionModel().eval()
+    pixels = torch.randn(2, 3, 224, 224)
+    handcrafted = torch.randn(2, 126)
+    path = tmp_path / "fusion.onnx"
+    torch.onnx.export(
+        model,
+        (pixels, handcrafted),
+        str(path),
+        input_names=["pixels", "handcrafted"],
+        output_names=["logits"],
+        opset_version=17,
+        dynamo=False,
+    )
+    session = ort.InferenceSession(str(path), providers=["CPUExecutionProvider"])
+    with torch.inference_mode():
+        expected = model(pixels, handcrafted).numpy()
+    actual = session.run(None, {"pixels": pixels.numpy(), "handcrafted": handcrafted.numpy()})[0]
+    np.testing.assert_allclose(actual, expected, atol=1e-5, rtol=1e-5)
+
+
 def test_all_frame_benchmark_and_temporal_weighting(tmp_path):
     torch = pytest.importorskip("torch")
     import cv2
