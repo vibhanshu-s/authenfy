@@ -63,6 +63,13 @@ timing includes decoding, preprocessing, transfer and inference, with GPU
 synchronization and rotating arm order. Three repeats are saved individually.
 Model loading is separate. Baseline does not compute DCT or pHash.
 
+The benchmark saves a checksummed frame-score chunk and timing record after every
+complete video. An interrupted benchmark can use `--resume` with the same code,
+manifest, checkpoints, settings and runtime. It rejects changed inputs or corrupt
+chunks rather than silently combining runs. Completed clips retain their original
+measurements; the report records how many were reused across sessions. A fresh
+benchmark requires a new output directory or removal of its own previous records.
+
 Artifacts: `training.json`, three `.pt` checkpoints, `benchmark.json`,
 `benchmark.md`, `efficientnet-fusion.onnx`, and `model-card.json`.
 An empty result or a code smoke test must never be reported as measured accuracy.

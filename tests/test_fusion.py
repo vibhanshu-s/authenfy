@@ -255,3 +255,24 @@ def test_installer_rejects_modified_training_provenance(tmp_path):
     with pytest.raises(ValueError, match="provenance mismatch"):
         install(source, tmp_path / "tampered")
     assert not (tmp_path / "tampered").exists()
+
+
+def test_benchmark_resume_preserves_completed_frames_and_rejects_corruption(tmp_path):
+    from training.recording import VideoLedger
+
+    identity = dict(arms=["baseline_all", "fusion_phash"], revision="reference", repeats=3)
+    ledger = VideoLedger(tmp_path, identity)
+    frames = dict(baseline_all=[0.1, 0.2, 0.3], fusion_phash=[0.1, 0.1, 0.3])
+    record = dict(path="video.mp4", measurements={arm: [dict(frames=3)] for arm in identity["arms"]})
+    ledger.append(record, frames)
+    resumed = VideoLedger(tmp_path, identity, resume=True)
+    assert len(resumed.records) == 1
+    for arm in identity["arms"]:
+        np.testing.assert_array_equal(resumed.frames(0)[arm], frames[arm])
+    with pytest.raises(ValueError, match="use --resume"):
+        VideoLedger(tmp_path, identity)
+    with pytest.raises(ValueError, match="runtime changed"):
+        VideoLedger(tmp_path, dict(identity, repeats=1), resume=True)
+    (tmp_path / "00000.npz").write_bytes(b"interrupted or corrupted transfer")
+    with pytest.raises(ValueError, match="missing or corrupt"):
+        VideoLedger(tmp_path, identity, resume=True)

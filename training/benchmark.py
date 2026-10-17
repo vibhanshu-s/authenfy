@@ -16,6 +16,7 @@ import numpy as np
 import torch
 
 from authenfy.fusion_features import (
+    FEATURE_VERSION,
     FrameSelector,
     frequency_features,
     model_inputs,
@@ -27,6 +28,7 @@ from authenfy.fusion_features import (
 from training.manifest import file_sha, load_manifest
 from training.metrics import binary_metrics, paired_accuracy_interval
 from training.networks import EfficientBaseline, FusionHead
+from training.recording import VideoLedger
 from training.train import runtime_identity
 from training.telemetry import resources
 from training.video import iter_frames
@@ -143,6 +145,22 @@ def main(args):
         if file_sha(args.run / name) != digest:
             raise ValueError("Checkpoint integrity mismatch")
     rows = [r for r in load_manifest(args.manifest) if r["split"] == "test"]
+    ledger = VideoLedger(
+        args.run / "benchmark-records",
+        dict(
+            manifest_sha256=training["manifest_sha256"],
+            weights_sha256=training["weights_sha256"],
+            runtime=identity,
+            arms=ARMS,
+            feature_version=FEATURE_VERSION,
+            repeats=args.repeats,
+            batch_size=args.batch_size,
+        ),
+        resume=args.resume,
+    )
+    if len(ledger.records) > len(rows):
+        raise ValueError("Saved benchmark has more videos than the current test split")
+    resumed_videos = len(ledger.records)
     load_start = time.perf_counter()
     baseline = EfficientBaseline().to(device)
     baseline.load_state_dict(torch.load(args.run / "baseline.pt", map_location=device, weights_only=True))
@@ -168,7 +186,20 @@ def main(args):
     frame_offsets = [0]
     for video_index, row in enumerate(rows):
         record = {k: row[k] for k in ["path", "label", "group", "method", "sha256"]}
+        if video_index < len(ledger.records):
+            saved = ledger.records[video_index]
+            if any(saved[k] != v for k, v in record.items()):
+                raise ValueError("Saved benchmark order or input provenance changed")
+            frames = ledger.frames(video_index)
+            for arm in ARMS:
+                frame_scores[arm].extend(frames[arm])
+            count = len(frames[ARMS[0]])
+            frame_labels.extend([row["label"]] * count)
+            frame_offsets.append(frame_offsets[-1] + count)
+            results.append(saved)
+            continue
         samples = {arm: [] for arm in ARMS}
+        current_frame_scores = {}
         for repeat in range(args.repeats):
             offset = (video_index + repeat) % len(ARMS)
             for arm in ARMS[offset:] + ARMS[:offset]:
@@ -188,7 +219,8 @@ def main(args):
                     )
                     raise
                 if repeat == 0:
-                    frame_scores[arm].extend(measurement.pop("frame_scores"))
+                    current_frame_scores[arm] = measurement.pop("frame_scores")
+                    frame_scores[arm].extend(current_frame_scores[arm])
                 samples[arm].append(measurement)
         for arm in ARMS:
             if len({r["frames"] for r in samples[arm]}) != 1:
@@ -197,6 +229,7 @@ def main(args):
         if len({samples[arm][0]["frames"] for arm in ARMS}) != 1:
             raise ValueError("Arms did not decode the same number of frames")
         record["measurements"] = samples
+        record = ledger.append(record, current_frame_scores)
         count = samples[ARMS[0]][0]["frames"]
         frame_labels.extend([row["label"]] * count)
         frame_offsets.append(frame_offsets[-1] + count)
@@ -224,6 +257,9 @@ def main(args):
             frames=frames,
             inferred_frames=inferred,
             skipped_fraction=1 - inferred / frames,
+            repeat_score_max_abs_delta=max(
+                abs(sample["score"] - values[0]["score"]) for values in per_video for sample in values
+            ),
             throughput_fps=frames / sum(seconds),
             mean_end_to_end_seconds_per_decoded_frame=sum(seconds) / frames,
             component_seconds={
@@ -260,6 +296,7 @@ def main(args):
         repeats=args.repeats,
         batch_size=args.batch_size,
         model_loading_seconds=cold,
+        resumed_videos=resumed_videos,
         protocol="Sequentially decode EVERY frame independently per arm; warmed FP32 inference; GPU synchronization; rotated order; temporal frame-weighted mean; threshold 0.5 fixed before test.",
         pHash_policy=dict(hamming=2, max_gap=12, max_rgb_mae=0.01, max_dct_mae=0.015),
         accuracy_difference_ci95_group_bootstrap=paired_accuracy_interval(results, "baseline_all", "fusion_phash"),
@@ -272,6 +309,7 @@ def main(args):
             "One training seed; source-pair splits do not prove identity-disjoint generalization.",
             "FF++ facial manipulations do not establish detection of fully AI-generated videos.",
             "Warm inference excludes model loading; filesystem page cache may be warm.",
+            "If resumed_videos is nonzero, completed video measurements were checksummed and retained across sessions with identical code/settings/runtime.",
             "Approximate pHash reuse can miss short or subtle edits; compare against fusion_all.",
         ],
         metric_notes={
@@ -355,4 +393,9 @@ if __name__ == "__main__":
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--repeats", type=int, default=3)
     parser.add_argument("--require-t4", action="store_true")
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="Reuse checksummed completed video records with identical code/settings/runtime",
+    )
     main(parser.parse_args())
