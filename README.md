@@ -30,7 +30,7 @@ Open `notebooks/Authenfy_T4_Validation.ipynb` in Colab and select **Runtime > Ch
 3. Load the checksum-verified published specialist tensor archive, reconstruct it using standard Transformers layers and verify it against the source graph.
 4. Export a local CPU ONNX model, verify numerical parity, and download the report and model.
 
-This is inference, export and regression work, not model training. The 32 crops come from 8 correlated video/method groups and include FF++ examples that may overlap specialist training. They are **not** an independent benchmark or a production accuracy estimate. The original generic model missed every manipulated crop in that audit; see `reports/face-audit-baseline.json`.
+This is inference, export and regression work, not model training. The 32 crops come from 8 correlated video/method groups and include FF++ examples that may overlap specialist training. They are **not** an independent benchmark or a production accuracy estimate. The original generic model missed every manipulated crop in that audit; see `reports/face-audit-baseline.json`. The exported specialist detected 19/20 manipulated crops with 4/12 false positives at 0.5 on the supplied prealigned inputs. The actual YuNet detection/alignment path detected 19/20 with 5/12 false positives and zero missed faces on the same 32 examples; see `reports/local-face-alignment-audit.json`. These small, correlated results must not be presented as general accuracy.
 
 ## API
 
@@ -64,12 +64,14 @@ Local receipts use HMAC-SHA256 over canonical JSON, signed with a server-held ra
 ```powershell
 .\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
 .\.venv\Scripts\python.exe -m pytest -q
-.\.venv\Scripts\ruff.exe check app.py authenfy tests scripts/download_model.py scripts/install_specialist.py
+.\.venv\Scripts\ruff.exe check app.py authenfy tests scripts
 npm ci
 npm run test:contract
 # Start the local server before the browser test; Chrome must be installed.
 npm run test:browser
 ```
+
+To reproduce the local alignment audit after installing the specialist, run `python scripts/fetch_face_audit.py` and `python scripts/local_face_audit.py private/face-audit/inputs.json`. These fetch checksum-verified public research examples into the ignored private directory.
 
 Python tests cover routing, malformed/oversized uploads, missing/corrupt weights, tampered receipts, concurrent requests, temporal sampling, duplicate/pHash collisions and coverage-aware decisions. Browser checks cover actual local inference, receipt verification, filename injection, error recovery and mobile overflow. CI runs Python checks on Windows and Ubuntu plus registry tests. CI evidence must be checked on GitHub after a push; local checks alone do not establish a green remote run.
 

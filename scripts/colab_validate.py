@@ -1,4 +1,5 @@
 """Run in a Colab T4 cell. Downloads a JSON receipt; never trains on smoke inputs."""
+
 import subprocess
 import sys
 
@@ -49,9 +50,11 @@ def prepare(image):
 
 
 rng = np.random.default_rng(42)
-inputs = [("gray", Image.new("RGB", (384, 384), (128, 128, 128))),
-          ("rectangular_noise", Image.fromarray(rng.integers(0, 256, (320, 640, 3), dtype=np.uint8))),
-          ("portrait_noise", Image.fromarray(rng.integers(0, 256, (640, 320, 3), dtype=np.uint8)))]
+inputs = [
+    ("gray", Image.new("RGB", (384, 384), (128, 128, 128))),
+    ("rectangular_noise", Image.fromarray(rng.integers(0, 256, (320, 640, 3), dtype=np.uint8))),
+    ("portrait_noise", Image.fromarray(rng.integers(0, 256, (640, 320, 3), dtype=np.uint8))),
+]
 url = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/pipeline-cat-chonk.jpeg"
 r = requests.get(url, timeout=60)
 r.raise_for_status()
@@ -75,18 +78,35 @@ for name, image in inputs:
     raw = float(session.run(None, {"pixel_values": x})[0].reshape(-1)[0])
     cpu_ms = (time.perf_counter() - start) * 1000
     p_cpu = float(1 / (1 + np.exp(-np.clip(raw, -80, 80))))
-    row = {"input": name, "rgb_sha256": hashlib.sha256(image.tobytes()).hexdigest(),
-           "gpu_score": p_gpu, "onnx_score": p_cpu, "absolute_error": abs(p_gpu-p_cpu),
-           "preprocessing_max_error": preprocessing_error, "gpu_ms": gpu_ms, "cpu_ms": cpu_ms}
+    row = {
+        "input": name,
+        "rgb_sha256": hashlib.sha256(image.tobytes()).hexdigest(),
+        "gpu_score": p_gpu,
+        "onnx_score": p_cpu,
+        "absolute_error": abs(p_gpu - p_cpu),
+        "preprocessing_max_error": preprocessing_error,
+        "gpu_ms": gpu_ms,
+        "cpu_ms": cpu_ms,
+    }
     records.append(row)
     print(json.dumps(row), flush=True)
     assert row["absolute_error"] < 1e-4, "GPU/ONNX parity failed"
-report = {"status": "passed", "kind": "runtime_smoke_and_numerical_parity", "gpu": gpu,
-          "utc": datetime.now(timezone.utc).isoformat(), "torch": torch.__version__,
-          "onnxruntime": ort.__version__, "preprocessor": "CLIPImageProcessorPil", "model": MODEL_ID, "revision": REVISION,
-          "model_sha256": digest, "inputs": records,
-          "limitations": "Four smoke inputs; no detection accuracy, calibration, face-swap or audio validation."}
+report = {
+    "status": "passed",
+    "kind": "runtime_smoke_and_numerical_parity",
+    "gpu": gpu,
+    "utc": datetime.now(timezone.utc).isoformat(),
+    "torch": torch.__version__,
+    "onnxruntime": ort.__version__,
+    "preprocessor": "CLIPImageProcessorPil",
+    "model": MODEL_ID,
+    "revision": REVISION,
+    "model_sha256": digest,
+    "inputs": records,
+    "limitations": "Four smoke inputs; no detection accuracy, calibration, face-swap or audio validation.",
+}
 Path("authenfy-colab-validation.json").write_text(json.dumps(report, indent=2))
 print("AUTHENFY_T4_VALIDATION_PASSED", json.dumps(report), flush=True)
 from google.colab import files
+
 files.download("authenfy-colab-validation.json")
