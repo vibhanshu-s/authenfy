@@ -210,3 +210,48 @@ def test_fusion_mode_never_silently_falls_back_to_legacy(tmp_path):
     assert response.status_code == 503
     assert response.json["code"] == "model_unavailable"
     assert b"EfficientNet-B0" in client.get("/").data
+
+
+@pytest.mark.parametrize("card", [None, [], "invalid", 17])
+def test_invalid_fusion_card_reports_unavailable(tmp_path, card):
+    import json
+    from authenfy.fusion_model import FusionDetector
+    from authenfy.errors import AnalysisError
+
+    (tmp_path / "model-card.json").write_text(json.dumps(card))
+    engine = FusionDetector(tmp_path)
+    assert not engine.available
+    with pytest.raises(AnalysisError, match="unavailable"):
+        engine.validate()
+
+
+def test_installer_rejects_modified_training_provenance(tmp_path):
+    import json
+    from scripts.install_fusion import install
+    from authenfy.fusion_features import FEATURE_VERSION
+
+    source, target = tmp_path / "run", tmp_path / "installed"
+    source.mkdir()
+    (source / "efficientnet-fusion.onnx").write_bytes(b"integrity-test-content")
+    training = dict(status="trained", manifest_sha256="manifest", weights_sha256={"fusion.pt": "weights"})
+    (source / "training.json").write_text(json.dumps(training))
+    benchmark = dict(status="measured", manifest_sha256="manifest", weights_sha256=training["weights_sha256"])
+    (source / "benchmark.json").write_text(json.dumps(benchmark))
+    card = dict(
+        status="validated",
+        feature_version=FEATURE_VERSION,
+        model_sha256=file_sha(source / "efficientnet-fusion.onnx"),
+        benchmark_sha256=file_sha(source / "benchmark.json"),
+        training_sha256=file_sha(source / "training.json"),
+        training_manifest_sha256="manifest",
+        training_weights_sha256=training["weights_sha256"],
+        task="facial_manipulation",
+    )
+    (source / "model-card.json").write_text(json.dumps(card))
+    install(source, target)
+    assert (target / "training.json").read_bytes() == (source / "training.json").read_bytes()
+    training["manifest_sha256"] = "different-run"
+    (source / "training.json").write_text(json.dumps(training))
+    with pytest.raises(ValueError, match="provenance mismatch"):
+        install(source, tmp_path / "tampered")
+    assert not (tmp_path / "tampered").exists()

@@ -14,6 +14,7 @@ from authenfy.model import sha256_file
 def install(source, target):
     card = json.loads((source / "model-card.json").read_text())
     benchmark = json.loads((source / "benchmark.json").read_text())
+    training = json.loads((source / "training.json").read_text())
     if card.get("status") != "validated" or card.get("feature_version") != FEATURE_VERSION:
         raise ValueError("Need a validated matching feature architecture")
     if benchmark.get("status") != "measured" or card["benchmark_sha256"] != sha256_file(source / "benchmark.json"):
@@ -21,6 +22,10 @@ def install(source, target):
     if (
         card["training_manifest_sha256"] != benchmark["manifest_sha256"]
         or card["training_weights_sha256"] != benchmark["weights_sha256"]
+        or training["status"] != "trained"
+        or card["training_sha256"] != sha256_file(source / "training.json")
+        or training["manifest_sha256"] != benchmark["manifest_sha256"]
+        or training["weights_sha256"] != benchmark["weights_sha256"]
     ):
         raise ValueError("Training/export/benchmark provenance mismatch")
     if sha256_file(source / "efficientnet-fusion.onnx") != card["model_sha256"]:
@@ -29,7 +34,7 @@ def install(source, target):
     existing = target / "efficientnet-fusion.onnx"
     if existing.exists() and sha256_file(existing) != card["model_sha256"]:
         raise ValueError("Target already contains a different model; use a new version directory")
-    for name in ["efficientnet-fusion.onnx", "model-card.json", "benchmark.json"]:
+    for name in ["efficientnet-fusion.onnx", "model-card.json", "benchmark.json", "training.json"]:
         path = target / name
         temporary = path.with_suffix(path.suffix + ".partial")
         shutil.copyfile(source / name, temporary)

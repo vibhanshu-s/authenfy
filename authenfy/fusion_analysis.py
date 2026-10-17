@@ -8,7 +8,7 @@ import numpy as np
 from PIL import Image
 
 from .errors import AnalysisError
-from .fusion_features import FrameSelector, frequency_features, model_inputs, rgb_input
+from .fusion_features import FrameSelector, frequency_features, normalize_crop, rgb_input, rgb_thumbnail
 from .media import IMAGE_EXTENSIONS, check_dimensions, decode_image
 
 
@@ -66,8 +66,10 @@ def analyze_fusion(path, detector):
             indices.clear()
 
     for index, image, timestamp in iterator:
-        anchor = selector.select(image, index)
-        bits = frequency_features(rgb_input(image))[63:]
+        crop = rgb_input(image)
+        features = frequency_features(crop)
+        anchor = selector.select_prepared(features, rgb_thumbnail(crop), index)
+        bits = features[63:]
         rows.append(
             dict(
                 index=index,
@@ -82,9 +84,8 @@ def analyze_fusion(path, detector):
             )
         )
         if anchor is None:
-            x, h = model_inputs(image)
-            pixels.append(x)
-            crafted.append(h)
+            pixels.append(normalize_crop(crop))
+            crafted.append(features)
             indices.append(index)
         if len(pixels) == 8:
             flush()

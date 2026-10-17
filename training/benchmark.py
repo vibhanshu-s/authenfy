@@ -15,7 +15,15 @@ import time
 import numpy as np
 import torch
 
-from authenfy.fusion_features import FrameSelector, model_inputs, tensor_input
+from authenfy.fusion_features import (
+    FrameSelector,
+    frequency_features,
+    model_inputs,
+    normalize_crop,
+    rgb_input,
+    rgb_thumbnail,
+    tensor_input,
+)
 from training.manifest import file_sha, load_manifest
 from training.metrics import binary_metrics, paired_accuracy_interval
 from training.networks import EfficientBaseline, FusionHead
@@ -78,11 +86,19 @@ def run_video(path, baseline, heads, arm, device, batch_size=32, collect_frame_s
             break
         timings["decode_seconds"] += time.perf_counter() - t
         t = time.perf_counter()
-        anchor = selector.select(image, index) if selector else None
+        crop, handcrafted = None, None
+        if selector:
+            crop = rgb_input(image)
+            handcrafted = frequency_features(crop)
+            anchor = selector.select_prepared(handcrafted, rgb_thumbnail(crop), index)
+        else:
+            anchor = None
         assignments.append(index if anchor is None else anchor)
         if anchor is None:
             if arm in {"baseline_all", "deep_mlp_all"}:
                 pixels, handcrafted = tensor_input(image), None
+            elif selector:
+                pixels = normalize_crop(crop)
             else:
                 pixels, handcrafted = model_inputs(image)
             pending_pixels.append(pixels)

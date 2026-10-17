@@ -49,6 +49,7 @@ python -m training.train data/ff-c23/manifest.csv runs/ff-c23 --require-t4
 python -m training.benchmark data/ff-c23/manifest.csv runs/ff-c23 --require-t4
 python -m training.export data/ff-c23/manifest.csv runs/ff-c23
 python -m training.plots runs/ff-c23
+python scripts/summarize_fusion.py runs/ff-c23
 ```
 
 Training samples eight frames per video, uses class-weighted binary cross entropy,
@@ -92,9 +93,9 @@ preprocessing/split versions, seed, augmentation, optimizer settings, AMP status
 software versions and hardware. `python -m training.plots runs/ff-c23` exports
 learning curves, ROC/PR/calibration plots, confusion matrices and speed comparisons.
 
-## V2 scope
+## Deferred V2
 
-FF++ contains facial manipulation examples; it cannot establish detection of fully
+AI-video development is deferred at the user's request. FF++ contains facial manipulation examples; it cannot establish detection of fully
 AI-generated videos. V2 needs a separately labeled real/generated video dataset,
 source/prompt-disjoint splits, temporal pHash features and its own held-out report.
 Do not rename the FF++ result as AI-video accuracy. Preserve this baseline and

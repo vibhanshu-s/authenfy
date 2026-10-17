@@ -34,7 +34,7 @@ class FusionDetector(Detector):
                     training_manifest_sha256=self.card["training_manifest_sha256"],
                     format="ONNX FP32",
                 )
-            except (ValueError, KeyError):
+            except (ValueError, KeyError, TypeError, OSError):
                 self.card = None
 
     @property

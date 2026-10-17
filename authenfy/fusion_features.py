@@ -15,7 +15,7 @@ STD = np.array([0.229, 0.224, 0.225], dtype=np.float32)
 
 
 def rgb_input(image):
-    """Torchvision B0 V1 geometry, implemented with PIL for CPU ONNX serving."""
+    """Shortest edge 256/bicubic, floor-centered 224 crop, shared by train/serve."""
     image = ImageOps.exif_transpose(image).convert("RGB")
     w, h = image.size
     scale = 256 / min(w, h)
@@ -25,8 +25,16 @@ def rgb_input(image):
 
 
 def tensor_input(image):
-    array = (np.asarray(rgb_input(image), dtype=np.float32) / 255 - MEAN) / STD
+    return normalize_crop(rgb_input(image))
+
+
+def normalize_crop(crop):
+    array = (np.asarray(crop, dtype=np.float32) / 255 - MEAN) / STD
     return np.ascontiguousarray(array.transpose(2, 0, 1))
+
+
+def rgb_thumbnail(crop):
+    return np.asarray(crop.resize((32, 32), Image.Resampling.BILINEAR), dtype=np.float32) / 255
 
 
 def frequency_features(image):
@@ -40,8 +48,7 @@ def frequency_features(image):
 
 def model_inputs(image):
     crop = rgb_input(image)
-    pixels = (np.asarray(crop, dtype=np.float32) / 255 - MEAN) / STD
-    return np.ascontiguousarray(pixels.transpose(2, 0, 1)), frequency_features(crop)
+    return normalize_crop(crop), frequency_features(crop)
 
 
 @dataclass(frozen=True)
@@ -63,7 +70,9 @@ class FrameSelector:
     def select(self, image, index):
         crop = rgb_input(image)
         vector = frequency_features(crop)
-        thumb = np.asarray(crop.resize((32, 32), Image.Resampling.BILINEAR), dtype=np.float32) / 255
+        return self.select_prepared(vector, rgb_thumbnail(crop), index)
+
+    def select_prepared(self, vector, thumb, index):
         reuse = False
         if self.anchor is not None:
             old_vector, old_thumb = self.anchor

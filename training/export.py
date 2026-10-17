@@ -11,6 +11,7 @@ import torch
 from authenfy.fusion_features import FEATURE_VERSION, model_inputs
 from training.manifest import file_sha, load_manifest
 from training.networks import EfficientBaseline, FusionHead, FusionModel
+from training.train import runtime_identity
 from training.video import sample_frames
 
 
@@ -21,6 +22,11 @@ def main(args):
         raise ValueError("Need completed training and benchmark")
     if file_sha(args.manifest) != training["manifest_sha256"]:
         raise ValueError("Manifest mismatch")
+    if (
+        benchmark["manifest_sha256"] != training["manifest_sha256"]
+        or benchmark["weights_sha256"] != training["weights_sha256"]
+    ):
+        raise ValueError("Training/benchmark provenance mismatch")
     baseline, head = EfficientBaseline(), FusionHead()
     for name, model in [("baseline", baseline), ("fusion", head)]:
         path = args.run / f"{name}.pt"
@@ -63,6 +69,8 @@ def main(args):
         training_manifest_sha256=training["manifest_sha256"],
         training_weights_sha256=training["weights_sha256"],
         training_runtime=training["runtime"],
+        training_sha256=file_sha(args.run / "training.json"),
+        export_runtime=runtime_identity(),
         benchmark_sha256=file_sha(args.run / "benchmark.json"),
         parity_max_logit_error=max(errors),
         parity_inputs=len(rows) * 2,
