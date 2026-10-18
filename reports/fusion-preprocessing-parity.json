@@ -1,0 +1,9 @@
+{
+  "status": "passed",
+  "reference_commit": "17559dff6ff0a9c97a51aa4deffbd3e79e542d63",
+  "inputs": 20,
+  "pixel_tensors_exact": true,
+  "dct_phash_vectors_exact": true,
+  "reuse_decisions_exact": true,
+  "purpose": "Remove redundant crop/DCT work without changing feature values or reuse policy. This is not an accuracy benchmark."
+}

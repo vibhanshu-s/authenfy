@@ -12,6 +12,7 @@ from werkzeug.exceptions import HTTPException
 
 from authenfy.analysis import analyze
 from authenfy.errors import AnalysisError
+from authenfy.fusion_model import FusionDetector
 from authenfy.media import IMAGE_EXTENSIONS, VIDEO_EXTENSIONS
 from authenfy.model import Detector, sha256_file
 from authenfy.receipts import ReceiptStore
@@ -28,15 +29,27 @@ def create_app(config=None, detector=None):
         MAX_FORM_PARTS=8,
         UPLOAD_FOLDER=str(ROOT / "uploads"),
         MODEL_PATH=os.environ.get("AUTHENFY_MODEL_PATH", str(ROOT / "artifacts/model.onnx")),
+        ENGINE=os.environ.get("AUTHENFY_ENGINE", "legacy"),
+        FUSION_DIR=os.environ.get("AUTHENFY_FUSION_DIR", str(ROOT / "artifacts/efficientnet-v1")),
         DATABASE=str(ROOT / "instance/receipts.sqlite3"),
         SIGNING_KEY_PATH=str(ROOT / "instance/receipts.key"),
     )
     app.config.update(config or {})
+    if app.config["ENGINE"] not in {"legacy", "fusion"}:
+        raise ValueError("AUTHENFY_ENGINE must be legacy or fusion")
     Path(app.config["UPLOAD_FOLDER"]).mkdir(parents=True, exist_ok=True)
-    engine = detector or Detector(app.config["MODEL_PATH"])
+    engine = detector or (
+        FusionDetector(app.config["FUSION_DIR"])
+        if app.config["ENGINE"] == "fusion"
+        else Detector(app.config["MODEL_PATH"])
+    )
     receipts = ReceiptStore(app.config["DATABASE"], app.config["SIGNING_KEY_PATH"])
     slots = threading.BoundedSemaphore(1)
     app.extensions.update(detector=engine, receipts=receipts)
+
+    @app.context_processor
+    def engine_context():
+        return {"engine_mode": app.config["ENGINE"]}
 
     @app.before_request
     def check_origin():
@@ -100,6 +113,7 @@ def create_app(config=None, detector=None):
             model_available=engine.available,
             facial_specialist_available=engine.faces.available if hasattr(engine, "faces") else False,
             blockchain_anchored=False,
+            engine=app.config["ENGINE"],
         ), 200 if engine.available else 503
 
     def save_upload():

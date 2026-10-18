@@ -5,7 +5,7 @@ const supported = /\.(jpe?g|png|webp|mp4|mov|avi|webm|mkv)$/i;
 let previewUrl;
 let busy = false;
 const meanings = {
-  synthetic_signals: ["Synthetic signals detected", "The model found signals associated with generated images. Review the original source and context."],
+  synthetic_signals: ["Synthetic signals detected", "The model found signals associated with synthetic or manipulated content. Review the original source and context."],
   low_synthetic_signals: ["Low synthetic signals", "The model found few synthetic signals in the analyzed crops. This does not establish authenticity."],
   inconclusive: ["Inconclusive", "Evidence is incomplete, scores fall between review bands, or sampled frames disagree. Review the face coverage and source."]
 };
@@ -56,7 +56,7 @@ function renderResult(data) {
   $("resultMeaning").textContent = meanings[data.verdict][1];
   $("score").textContent = data.synthetic_score.toFixed(3);
   $("facts").replaceChildren();
-  const fields = [["Receipt ID", data.receipt_id], ["SHA-256", data.file_sha256], ["Sampled / inferred", `${data.frames.length} / ${data.unique_frames_analyzed}`], ["Processing time", `${data.processing_seconds.toFixed(2)} s`]];
+  const fields = [["Receipt ID", data.receipt_id], ["SHA-256", data.file_sha256], [data.engine_version ? "Decoded / inferred" : "Sampled / inferred", `${data.frames.length} / ${data.unique_frames_analyzed}`], ["Processing time", `${data.processing_seconds.toFixed(2)} s`]];
   for (const [title, value] of fields) {
     const row = document.createElement("div"), dt = document.createElement("dt"), dd = document.createElement("dd");
     dt.textContent = title; dd.textContent = value; row.append(dt, dd); $("facts").append(row);
@@ -64,14 +64,15 @@ function renderResult(data) {
   $("frames").replaceChildren();
   for (const frame of data.frames) {
     const row = document.createElement("tr");
-    for (const value of [frame.index + 1, frame.timestamp_seconds.toFixed(3), frame.generated_image_score.toFixed(3), frame.face_manipulation_score === null ? "Not assessed" : frame.face_manipulation_score.toFixed(3), frame.face_coverage.replaceAll("_", " "), frame.synthetic_score.toFixed(3), frame.duplicate_of === null ? "Analyzed" : `Identical to frame ${frame.duplicate_of + 1}`]) {
+    const reuse = frame.reused_from != null ? `pHash reuse from frame ${frame.reused_from + 1}` : frame.duplicate_of == null ? "Analyzed" : `Identical to frame ${frame.duplicate_of + 1}`;
+    for (const value of [frame.index + 1, frame.timestamp_seconds.toFixed(3), frame.generated_image_score == null ? "Not enabled" : frame.generated_image_score.toFixed(3), frame.face_manipulation_score == null ? "Not assessed" : frame.face_manipulation_score.toFixed(3), frame.face_coverage.replaceAll("_", " "), frame.synthetic_score.toFixed(3), reuse]) {
       const td = document.createElement("td"); td.textContent = value; row.append(td);
     }
     $("frames").append(row);
   }
   $("limitations").replaceChildren();
   for (const text of data.limitations) { const li = document.createElement("li"); li.textContent = text; $("limitations").append(li); }
-  $("modelDetails").textContent = JSON.stringify({generated_image_model:data.model, facial_specialist:data.specialist_model, coverage_complete:data.coverage_complete, aggregation:data.aggregation}, null, 2);
+  $("modelDetails").textContent = JSON.stringify({model:data.model, engine:data.engine_version, facial_specialist:data.specialist_model, coverage_complete:data.coverage_complete, aggregation:data.aggregation}, null, 2);
   $("receiptLink").href = `/receipts/${encodeURIComponent(data.receipt_id)}`;
   $("receiptId").value = data.receipt_id;
   $("result").hidden = false; $("resultTitle").focus();
@@ -95,7 +96,7 @@ if ($("uploadForm")) {
     try {
       const response = send($("uploadForm"), (percent) => {
         $("uploadProgress").value = percent;
-        $("progressText").textContent = percent < 100 ? `Uploading ${percent}%` : "Upload complete. Decoding and analyzing sampled frames…";
+        $("progressText").textContent = percent < 100 ? `Uploading ${percent}%` : "Upload complete. Decoding and analyzing frames…";
       });
       $("fileInput").disabled = true;
       renderResult(await response);
