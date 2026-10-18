@@ -73,6 +73,17 @@ heads finish. Partial archives never enter the committed backup index. Recovery
 copies add overhead to the recorded training duration. The campaign also backs up
 completed stage artifacts; no copying occurs during benchmark clip timings.
 
+The benchmark also accepts `--recovery-dir`. After every fully measured video it
+copies immutable frame-score chunks to content-addressed backup objects and
+commits a checksummed ledger index. Repeated snapshots reuse existing chunks and
+do not duplicate the model weights. Restore applies the newest completed-video
+ledger after the trained checkpoint snapshot. A partially measured clip is rerun.
+All copies occur between videos, outside every timed inference interval, and the
+report discloses this backup policy. `training.campaign --benchmark-only --resume`
+continues evaluation without rerunning or resuming optimizer training. It still
+validates the manifest and checkpoint hashes. Benchmark code/runtime identity must
+match the saved ledger; a code change requires a separately archived attempt.
+
 After a reset, check out the same pinned code revision, prepare the same dataset,
 and restore into an empty local run directory:
 

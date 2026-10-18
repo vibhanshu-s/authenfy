@@ -21,6 +21,11 @@ def main(args):
     ]
     if args.recovery_dir:
         stages[0][2].extend(["--recovery-dir", str(args.recovery_dir)])
+        stages[1][2].extend(["--recovery-dir", str(args.recovery_dir)])
+    if args.benchmark_only:
+        # Benchmark validates completed training, manifest and every weight hash.
+        # Never resume optimizer training merely to continue a measured benchmark.
+        stages = stages[1:]
     state = dict(status="running", stages=[], started_utc=datetime.now(timezone.utc).isoformat())
     status_path = args.run / "campaign.json"
     for name, module, options in stages:
@@ -52,4 +57,5 @@ if __name__ == "__main__":
     parser.add_argument("run", type=Path)
     parser.add_argument("--resume", action="store_true", help="Restore matching training and benchmark progress")
     parser.add_argument("--recovery-dir", type=Path, help="Persistent backup storage; copied only outside measured clip timings")
+    parser.add_argument("--benchmark-only", action="store_true", help="Evaluate existing trained checkpoints without optimizer training")
     raise SystemExit(main(parser.parse_args()))

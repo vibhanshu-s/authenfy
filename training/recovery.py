@@ -120,6 +120,61 @@ class RecoveryStore:
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(source, target)
 
+        self.restore_benchmark(root)
+
+    def snapshot_benchmark(self, root):
+        """Publish completed videos between timings, copying immutable chunks once."""
+        root = Path(root)
+        state = root / 'benchmark-records' / 'state.json'
+        if not state.exists():
+            return
+        record = json.loads(state.read_text())
+        files = [state]
+        progress = root / 'benchmark-progress.json'
+        if progress.exists():
+            files.append(progress)
+        files.extend(state.parent / f'{i:05}.npz' for i in range(len(record['records'])))
+        objects = self.directory / 'benchmark-objects'
+        objects.mkdir(exist_ok=True)
+        entries = {}
+        for source in files:
+            digest = file_sha(source)
+            target = objects / digest
+            if not target.exists():
+                temporary = objects / (digest + '.partial')
+                shutil.copyfile(source, temporary)
+                if file_sha(temporary) != digest:
+                    raise ValueError('Benchmark recovery checksum mismatch')
+                temporary.replace(target)
+            elif file_sha(target) != digest:
+                raise ValueError('Existing benchmark recovery object is corrupt')
+            entries[source.relative_to(root).as_posix()] = digest
+        write_json(self.directory / 'benchmark-latest.json', dict(
+            files=entries, completed_videos=len(record['records']),
+            saved_utc=datetime.now(timezone.utc).isoformat()
+        ))
+        print(f'RECOVERY_BENCHMARK_VIDEOS {len(record["records"])}', flush=True)
+
+    def restore_benchmark(self, root):
+        latest = self.directory / 'benchmark-latest.json'
+        if not latest.exists():
+            return
+        record = json.loads(latest.read_text())
+        for name, digest in record['files'].items():
+            relative = Path(name)
+            if (
+                relative.is_absolute() or '..' in relative.parts or '\\' in name or ':' in name
+                or len(digest) != 64 or any(c not in '0123456789abcdef' for c in digest)
+                or not (name == 'benchmark-progress.json' or name.startswith('benchmark-records/'))
+            ):
+                raise ValueError('Invalid benchmark recovery path')
+            source = self.directory / 'benchmark-objects' / digest
+            if file_sha(source) != digest:
+                raise ValueError('Benchmark recovery checksum mismatch')
+            target = Path(root) / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(source, target)
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)

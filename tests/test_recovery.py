@@ -57,3 +57,37 @@ def test_persistent_backup_rejects_archive_path_escape(tmp_path):
     with pytest.raises(ValueError, match='path'):
         RecoveryStore(backup).restore(tmp_path / 'restored')
     assert not (tmp_path / 'escaped').exists()
+
+
+def test_benchmark_backup_restores_latest_committed_videos_and_deduplicates(tmp_path):
+    import numpy as np
+    from training.recording import VideoLedger
+
+    run = tmp_path / 'run'
+    run.mkdir()
+    store = RecoveryStore(tmp_path / 'backup')
+    (run / 'training.json').write_text('{"status":"trained"}')
+    store.snapshot(run)
+    identity = dict(arms=['baseline_all'])
+    ledger = VideoLedger(run / 'benchmark-records', identity)
+    for i in range(2):
+        ledger.append(dict(measurements={'baseline_all': [dict(frames=2)]}),
+                      {'baseline_all': np.array([0.1+i/10, 0.5])})
+        (run / 'benchmark-progress.json').write_text(json.dumps(ledger.records))
+        store.snapshot_benchmark(run)
+    before = {p.name for p in (store.directory / 'benchmark-objects').iterdir()}
+    store.snapshot_benchmark(run)
+    assert before == {p.name for p in (store.directory / 'benchmark-objects').iterdir()}
+    restored = tmp_path / 'replacement'
+    RecoveryStore(store.directory).restore(restored)
+    recovered = VideoLedger(restored / 'benchmark-records', identity, resume=True)
+    assert len(recovered.records) == 2
+    np.testing.assert_array_equal(recovered.frames(1)['baseline_all'], [0.2, 0.5])
+    assert (restored / 'training.json').read_text() == '{"status":"trained"}'
+    latest = json.loads((store.directory / 'benchmark-latest.json').read_text())
+    digest = latest['files']['benchmark-records/00000.npz']
+    (store.directory / 'benchmark-objects' / digest).write_bytes(b'corrupt')
+    with pytest.raises(ValueError, match='corrupt'):
+        store.snapshot_benchmark(run)
+    with pytest.raises(ValueError, match='checksum'):
+        RecoveryStore(store.directory).restore(tmp_path / 'bad-restore')

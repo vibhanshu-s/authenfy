@@ -29,6 +29,7 @@ from training.manifest import file_sha, load_manifest
 from training.metrics import binary_metrics, paired_accuracy_interval
 from training.networks import EfficientBaseline, FusionHead
 from training.recording import VideoLedger
+from training.recovery import RecoveryStore
 from training.train import runtime_identity
 from training.telemetry import resources
 from training.video import iter_frames
@@ -136,6 +137,8 @@ def run_video(path, baseline, heads, arm, device, batch_size=32, collect_frame_s
 
 
 def main(args):
+    recovery_directory = getattr(args, 'recovery_dir', None)
+    recovery = RecoveryStore(recovery_directory) if recovery_directory else None
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     identity = runtime_identity()
     if args.require_t4 and "T4" not in identity["device"]:
@@ -237,6 +240,8 @@ def main(args):
         frame_offsets.append(frame_offsets[-1] + count)
         results.append(record)
         (args.run / "benchmark-progress.json").write_text(json.dumps(results, indent=2))
+        if recovery is not None:
+            recovery.snapshot_benchmark(args.run)
         print(f"benchmarked {video_index + 1}/{len(rows)} {row['path']}", flush=True)
     summary = {}
     for arm in ARMS:
@@ -299,6 +304,11 @@ def main(args):
         batch_size=args.batch_size,
         model_loading_seconds=cold,
         resumed_videos=resumed_videos,
+        persistent_recovery=dict(
+            enabled=recovery is not None,
+            schedule="After each complete video, outside all timed intervals",
+            storage="Content-addressed immutable score chunks and a checked ledger commit",
+        ),
         protocol="Sequentially decode EVERY frame independently per arm; warmed FP32 inference; GPU synchronization; rotated order; temporal frame-weighted mean; threshold 0.5 fixed before test.",
         pHash_policy=dict(hamming=2, max_gap=12, max_rgb_mae=0.01, max_dct_mae=0.015),
         accuracy_difference_ci95_group_bootstrap=paired_accuracy_interval(results, "baseline_all", "fusion_phash"),
@@ -312,6 +322,7 @@ def main(args):
             "FF++ facial manipulations do not establish detection of fully AI-generated videos.",
             "Warm inference excludes model loading; filesystem page cache may be warm.",
             "If resumed_videos is nonzero, completed video measurements were checksummed and retained across sessions with identical code/settings/runtime.",
+            "Optional Drive recovery I/O runs between videos and is excluded from inference latency; source media are still decoded afresh for every arm/repeat.",
             "Approximate pHash reuse can miss short or subtle edits; compare against fusion_all.",
         ],
         metric_notes={
@@ -395,6 +406,7 @@ if __name__ == "__main__":
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--repeats", type=int, default=3)
     parser.add_argument("--require-t4", action="store_true")
+    parser.add_argument("--recovery-dir", type=Path, help="Back up each completed video between timed clips")
     parser.add_argument(
         "--resume",
         action="store_true",
