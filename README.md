@@ -2,7 +2,7 @@
 
 Facial deepfake screening with **fine-tuned EfficientNet-B0 + DCT + pHash features fed into an MLP**. A paired Colab T4 experiment compares the EfficientNet all-frame baseline, a deep-only MLP control, full-frame fusion and fusion with guarded pHash reuse.
 
-Full fine-tuning and held-out accuracy/speed results remain pending. The T4 campaign uses persistent Drive backups of prepared frames and completed checkpoints so progress can survive runtime replacement. Passing code tests or a small pipeline smoke run does not establish model performance. AI-video development is deferred.
+V1 fine-tuning is complete on a Colab Tesla T4: eight EfficientNet-B0 epochs and 20 epochs for each MLP head. The baseline checkpoint was selected at epoch 5 by validation log loss. The complete all-frame held-out accuracy/speed comparison and final application model installation remain pending. The T4 campaign uses persistent Drive backups of prepared frames and completed checkpoints so progress can survive runtime replacement. Validation results and code checks do not establish final test performance. AI-video development is deferred.
 
 ## Architecture
 
