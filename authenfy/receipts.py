@@ -34,6 +34,9 @@ class ReceiptStore:
             connection.execute(
                 "CREATE TABLE IF NOT EXISTS receipts (id TEXT PRIMARY KEY, payload TEXT NOT NULL, signature TEXT NOT NULL)"
             )
+            connection.execute(
+                "CREATE TABLE IF NOT EXISTS anchors (subject_key TEXT PRIMARY KEY, kind TEXT NOT NULL, subject_id TEXT NOT NULL, tx_hash TEXT NOT NULL UNIQUE, registry TEXT NOT NULL, chain_id INTEGER NOT NULL, block_number INTEGER NOT NULL, created_at TEXT NOT NULL)"
+            )
 
     @contextmanager
     def connect(self):
@@ -79,3 +82,28 @@ class ReceiptStore:
             "signature": row[1],
             "receipt_commitment": hashlib.sha256(canonical(payload).encode()).hexdigest(),
         }
+
+    def put_anchor(self, kind, subject_id, tx_hash, registry, chain_id, block_number):
+        subject_key = f"{kind}:{subject_id}"
+        created_at = datetime.now(timezone.utc).isoformat()
+        with self.connect() as connection:
+            existing = connection.execute(
+                "SELECT tx_hash FROM anchors WHERE subject_key = ?", (subject_key,)
+            ).fetchone()
+            if existing and existing[0] != tx_hash:
+                raise ValueError("This item already has a different blockchain anchor")
+            connection.execute(
+                "INSERT OR IGNORE INTO anchors VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (subject_key, kind, subject_id, tx_hash, registry.lower(), int(chain_id), int(block_number), created_at),
+            )
+        return self.get_anchor(kind, subject_id)
+
+    def get_anchor(self, kind, subject_id):
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT tx_hash, registry, chain_id, block_number, created_at FROM anchors WHERE subject_key = ?",
+                (f"{kind}:{subject_id}",),
+            ).fetchone()
+        if row is None:
+            return None
+        return dict(tx_hash=row[0], registry=row[1], chain_id=row[2], block_number=row[3], created_at=row[4])

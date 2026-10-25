@@ -1,89 +1,89 @@
-# Authenfy
+# Authenfy v1
 
-A local media inspection app with separate generated-image and facial-manipulation screening, sampled video evidence, and signed exact-file receipts. Flask + native HTML/CSS/JavaScript; ONNX inference runs on the server. Model development and numerical checks use a Colab T4.
+Authenfy screens images and videos for facial-manipulation signals with fine-tuned EfficientNet-B0 features, DCT/pHash features and an MLP. Its versioned benchmark compares an all-frame EfficientNet baseline, a deep-feature MLP, full-frame fusion and fusion with guarded pHash frame reuse. AI-generated video detection remains out of scope for this version.
 
-**An analysis score is not proof that media is real or fake.** The original repository could not start because its detector was missing and its root template did not exist. This rebuild supplies a functioning baseline, bounded decoding, honest coverage states and reproducible verification.
+## Build and results
 
-## Run locally (Python 3.12)
+The implementation, training workflow, benchmark protocol, detailed metric definitions, limitations, and current measured results are documented in [docs/BUILD_AND_METRICS.md](docs/BUILD_AND_METRICS.md). The experiment uses Kaggle [FF++ C23](https://www.kaggle.com/datasets/xdxd003/ff-c23). Its source-pair test is preliminary evidence for facial-manipulation screening; it does not establish AI-generated-video detection or generalization to unseen identities.
+
+The complete evidence bundle is in [reports/v1-evidence](reports/v1-evidence) and downloadable from `/evidence`. It includes benchmark JSON, training records, model card, per-video and frame scores, timing repeats and evaluation source files, with SHA-256 indexes. Verify it with:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\record_benchmark_evidence.py --verify
+.\.venv\Scripts\python.exe scripts\record_benchmark_evidence.py --verify-150
+```
+
+The evidence page at `/evidence` summarizes the run and offers wallet anchoring. The bundle can also be checked offline. Anchoring records a benchmark file hash and evidence-manifest hash; it cannot prove the dataset or content is truthful.
+
+## Run locally
+
+Python 3.12 is supported. Install the trained bundle first; model artifacts are not stored in Git:
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
-.\.venv\Scripts\python.exe scripts/download_model.py
+.\.venv\Scripts\python.exe scripts\install_fusion.py C:/path/to/extracted/run
 .\.venv\Scripts\waitress-serve.exe --host=127.0.0.1 --port=5000 app:app
 ```
 
-On Linux/macOS use `.venv/bin/python` and `.venv/bin/waitress-serve`. Open http://127.0.0.1:5000. The app remains usable without a facial specialist, but missing coverage cannot receive a low-signal verdict. To install the specialist, use the T4 notebook below, then:
+The installer validates the ONNX model, training metadata, benchmark and model-card hashes. The fusion service uses CPU ONNX independently of the GPU benchmark. It decodes every video frame, batches inference, and can reuse scores for visually similar frames under conservative RGB/DCT checks. Uploads are limited to 64 MiB, 120 seconds, 3,600 frames and 20 MP per frame. One analysis runs at a time. Scores are uncalibrated screening signals and every case needs human review.
+
+## Blockchain timestamping
+
+`contracts/AnalysisRegistry.sol` stores immutable `(file SHA-256, commitment SHA-256)` pairs. The app can anchor local analysis receipts and the benchmark evidence manifest using an injected EIP-1193 browser wallet. The contract publisher is fixed at deployment; the connected wallet must be that publisher. The private key stays in the wallet. The server uses a read-only RPC endpoint to verify chain ID, sender, call data, transaction status and the emitted event before marking an item anchored.
+
+Install the development dependencies, then deploy from a trusted shell to a chain you control. Protect the deployer key and never commit it:
 
 ```powershell
-.\.venv\Scripts\python.exe scripts/install_specialist.py C:/path/to/face-specialist.onnx
+npm ci
+$env:AUTHENFY_RPC_URL = 'https://your-rpc-endpoint'
+$env:AUTHENFY_DEPLOYER_PRIVATE_KEY = '0x...'
+npm run deploy:contract
 ```
 
-The installer verifies this ONNX export against the committed validation report and installs the pinned YuNet face detector. For your own trusted reproduction, pass `--validation path/to/authenfy-specialist-validation.json`; build hashes can differ across exporter environments. Keep the model and its matching validation report together. Large model binaries are deliberately excluded from Git. The generic model installer downloads 87 MB from its immutable Hugging Face revision and checks SHA-256. The specialist export is about 1.2 GB. At least 4 GB free RAM is recommended for local inference; run one application process because its admission semaphore is process-local.
+Copy the returned registry address and chain ID into the Authenfy deployment configuration. Set `AUTHENFY_RPC_URL` to a read-only RPC endpoint for that same chain, then restart the service. In the browser, add the same chain to the wallet and connect the registry publisher account. The registry contract tests run on a disposable in-process Ganache chain; no public deployment is included in this repository. Public transactions require gas and an RPC/wallet you provide.
 
-## Colab T4
+## Container deployment
 
-Open `notebooks/Authenfy_T4_Validation.ipynb` in Colab and select **Runtime > Change runtime type > T4 GPU**. Run the cells in order. They:
+Install the model bundle at `artifacts/efficientnet-v1` before building. Then:
 
-1. Assert that the device is a Tesla T4; validate pinned generated-image GPU inference against CPU ONNX and explicit PIL preprocessing.
-2. Audit the same 32 labeled example crops without fitting weights or choosing thresholds.
-3. Load the checksum-verified published specialist tensor archive, reconstruct it using standard Transformers layers and verify it against the source graph.
-4. Export a local CPU ONNX model, verify numerical parity, and download the report and model.
+```powershell
+Copy-Item deploy/.env.example .env
+# Optional: fill registry address, chain ID and read-only RPC URL in .env.
+docker compose up --build -d
+```
 
-This is inference, export and regression work, not model training. The 32 crops come from 8 correlated video/method groups and include FF++ examples that may overlap specialist training. They are **not** an independent benchmark or a production accuracy estimate. The original generic model missed every manipulated crop in that audit; see `reports/face-audit-baseline.json`. The exported specialist detected 19/20 manipulated crops with 4/12 false positives at 0.5 on the supplied prealigned inputs. The actual YuNet detection/alignment path detected 19/20 with 5/12 false positives and zero missed faces on the same 32 examples; see `reports/local-face-alignment-audit.json`. These small, correlated results must not be presented as general accuracy.
+Open `http://localhost:5000`. Compose runs as a non-root user, mounts model files read-only, makes the container root filesystem read-only, drops Linux capabilities and persists the SQLite database and HMAC signing key in a named volume. Back up that volume securely; losing the HMAC key invalidates local receipt signatures. Put a public deployment behind HTTPS and a proxy with appropriate upload/body and request timeouts. The built-in analyzer caps still apply.
 
 ## API
 
-| Endpoint | Contract |
-| --- | --- |
-| `GET /health` | Model presence/integrity and specialist availability; 503 on missing/corrupt generic weights |
-| `POST /analyze` | Multipart `media`; returns scores, coverage, frames, model hashes, signed receipt and receipt commitment |
-| `GET /receipts/<receipt_id>` | Download a verified local JSON receipt; the random ID is its access token |
-| `POST /verify` | Multipart `receipt_id` plus `media`; checks signature integrity and exact SHA-256 bytes |
+| Endpoint | Purpose |
+|---|---|
+| `GET /health` | Model availability and blockchain configuration status |
+| `POST /analyze` | Analyze multipart `media`; return scores, evidence and signed receipt |
+| `GET /receipts/<receipt_id>` | Download receipt and verified anchor metadata, if recorded |
+| `POST /verify` | Verify a receipt and exact uploaded file bytes |
+| `GET /evidence` | Inspect and anchor the benchmark evidence |
+| `GET /evidence/v1-ff-c23-100` | Download the SHA-256 indexed evidence manifest |
+| `GET /evidence/v1-ff-c23-100/bundle.zip` | Download the complete proof bundle and hash sidecars |
+| `GET /evidence/v1-ff-c23-150/benchmark.json` | Download the full later benchmark record |
+| `GET /evidence/v1-ff-c23-150/comparison.json` | Download the concise comparison and paired uncertainty summary |
+| `GET /evidence/v1-ff-c23-150/manifest.json` | Download the 150-video file-hash manifest |
+| `GET /evidence/v1-ff-c23-150/manifest.sha256` | Download its SHA-256 sidecar |
+| `POST /anchors/confirm` | Verify a mined wallet transaction against the configured registry |
+| `GET /anchors/<kind>/<subject_id>` | Retrieve the server-verified chain anchor |
 
-Accepted static images: JPEG, PNG and WebP. Accepted video containers: MP4, MOV, AVI, WebM and MKV, subject to the installed codec's ability to decode. Maximum upload: 64 MiB. Maximum clip: 120 seconds. Maximum image/frame size: 20 MP, minimum dimensions 32 pixels, maximum aspect ratio 8:1. Up to 16 frames are sampled uniformly, including both endpoints. Decode failures abort rather than silently reducing coverage.
+Receipts are HMAC-SHA256 signed and stored in SQLite. Keep the database and signing key together. Blockchain timestamping proves that a particular hash pair was recorded at a chain position; it does not prove a media file is authentic or an analysis is correct.
 
-The server isolates decoding and inference in a killable process with a 90-second deadline. It accepts one analysis at a time and returns 429 when busy. Uploads use random temporary paths and are deleted in `finally` blocks. A server crash can leave an orphan; operators should clean the upload directory while the server is stopped.
-
-## Models and decision policy
-
-- **Generated images:** corrected Community Forensics ViT-Small FP32. Aspect-preserving shortest-edge resize 440, PIL bicubic, center crop 384, exact CLIP normalization, sigmoid output. Revision and SHA-256 are pinned in `authenfy/model.py`.
-- **Facial manipulation:** pinned Yermakov/Cech/Matas CLIP-L specialist. YuNet finds up to four faces and five landmarks; a least-squares similarity transform approximates the specialist's DeepfakeBench alignment. This approximation still needs independent validation on arbitrary raw images and videos.
-- **Aggregation:** take the maximum of the two component scores for each sampled frame, then the temporal mean. A mean >= 0.8 yields synthetic signals; a maximum <= 0.2 yields low signals only with complete detected-face coverage. Intermediate scores, disagreement > 0.5, no-face cases and incomplete low-score coverage yield inconclusive. These bands are policy defaults, not calibrated probabilities.
-- Only byte-identical RGB frames reuse inference. pHash is descriptive evidence and never an authenticity key.
-- All results require human review. Component scores and coverage are returned separately; no verdict is labeled “authentic.”
-
-## Receipts and Ethereum
-
-Local receipts use HMAC-SHA256 over canonical JSON, signed with a server-held random 32-byte key. SQLite stores receipts, not uploads or filenames. `receipt_commitment` is SHA-256 of the signed payload before signature/commitment fields are attached. Protect and back up `instance/receipts.key` with the database. Key loss prevents checking old receipts. HMAC is server-verifiable, not independent public attestation.
-
-`contracts/AnalysisRegistry.sol` implements an immutable publisher-restricted Ethereum registry for `(file SHA-256, receipt commitment)` pairs. It rejects unauthorized writes, zero commitments and overwrites, while allowing multiple distinct analyses of the same file. It has been exercised on an in-process Ganache chain. **The running application does not submit public-chain transactions and reports `blockchain_anchored: false`.** Public chain deployment, issuer management, RPC finality checks and UI integration remain separate work. Hash registration cannot prove a depicted event is true.
-
-## Verification
+## Checks
 
 ```powershell
 .\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
 .\.venv\Scripts\python.exe -m pytest -q
-.\.venv\Scripts\ruff.exe check app.py authenfy tests scripts
+.\.venv\Scripts\ruff.exe check app.py authenfy tests scripts training
 npm ci
 npm run test:contract
-# Start the local server before the browser test; Chrome must be installed.
 npm run test:browser
 ```
 
-To reproduce the local alignment audit after installing the specialist, run `python scripts/fetch_face_audit.py` and `python scripts/local_face_audit.py private/face-audit/inputs.json`. These fetch checksum-verified public research examples into the ignored private directory.
-
-Python tests cover routing, malformed/oversized uploads, missing/corrupt weights, tampered receipts, concurrent requests, temporal sampling, duplicate/pHash collisions and coverage-aware decisions. Browser checks cover actual local inference, receipt verification, filename injection, error recovery and mobile overflow. CI runs Python checks on Windows and Ubuntu plus registry tests. CI evidence must be checked on GitHub after a push; local checks alone do not establish a green remote run.
-
-## Scope and remaining gaps
-
-See `docs/GAPS.md` and the machine-readable receipts in `reports/`. Audio detection, audiovisual synchronization, rPPG, Grad-CAM localization, user accounts, production deployment and representative independent calibration are not implemented. The app is bound to loopback by default; do not expose it publicly without authentication, process/container resource limits, proxy limits and a retention policy.
-
-## Sources and licenses
-
-- [Community Forensics model](https://huggingface.co/buildborderless/CommunityForensics-DeepfakeDet-ViT) (MIT per model card) and [original research](https://github.com/JeongsooP/Community-Forensics).
-- [Facial deepfake model](https://huggingface.co/yermandy/deepfake-detection) (MIT per model card) and [official implementation](https://github.com/yermandy/deepfake-detection).
-- [OpenCV YuNet](https://github.com/opencv/opencv_zoo/tree/main/models/face_detection_yunet) (see its directory license).
-- [DeepfakeBench preprocessing](https://github.com/SCLBD/DeepfakeBench/blob/fb6171a8e1db2ae0f017d9f3a12be31fd9e0a3fb/preprocessing/preprocess.py) defines the alignment reference. YuNet landmark locations differ from dlib's; the substitution is explicitly disclosed.
-
-Example face images are fetched only for the small research audit and are not redistributed in this repository or used to train a model.
+Browser tests need Chrome and a running local app. Tests validate code behavior; benchmark results are separate model evidence.

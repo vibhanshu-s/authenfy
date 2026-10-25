@@ -1,0 +1,17 @@
+.git
+.env
+.venv
+__pycache__
+.pytest_cache
+.ruff_cache
+node_modules
+runs
+data
+uploads
+instance
+private
+artifacts
+reports/*.json
+reports/*.png
+reports/*.csv
+reports/*.npz
