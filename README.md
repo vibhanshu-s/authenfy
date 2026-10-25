@@ -1,62 +1,81 @@
 # Authenfy v1
 
-Facial deepfake screening with **fine-tuned EfficientNet-B0 + DCT + pHash features fed into an MLP**. A paired Colab T4 experiment compares the EfficientNet all-frame baseline, a deep-only MLP control, full-frame fusion and fusion with guarded pHash reuse.
+Authenfy screens images and videos for facial-manipulation signals with fine-tuned EfficientNet-B0 features, DCT/pHash features and an MLP. Its versioned benchmark compares an all-frame EfficientNet baseline, a deep-feature MLP, full-frame fusion and fusion with guarded pHash frame reuse. AI-generated video detection remains out of scope for this version.
 
-V1 fine-tuning is complete on a Colab Tesla T4: eight EfficientNet-B0 epochs and 20 epochs for each MLP head. The baseline checkpoint was selected at epoch 5 by validation log loss. The complete all-frame held-out accuracy/speed comparison and final application model installation remain pending. The T4 campaign uses persistent Drive backups of prepared frames and completed checkpoints so progress can survive runtime replacement. Validation results and code checks do not establish final test performance. AI-video development is deferred.
+## Build and results
 
-## Architecture
+The implementation, training workflow, benchmark protocol, detailed metric definitions, limitations, and current measured results are documented in [docs/BUILD_AND_METRICS.md](docs/BUILD_AND_METRICS.md). The experiment uses Kaggle [FF++ C23](https://www.kaggle.com/datasets/xdxd003/ff-c23). Its source-pair test is preliminary evidence for facial-manipulation screening; it does not establish AI-generated-video detection or generalization to unseen identities.
 
-EfficientNet-B0 starts from ImageNet-1K weights and is fine-tuned for facial manipulation. Its best validation checkpoint supplies 1,280 pooled features. A shared 224-pixel RGB crop supplies 63 signed-log DCT coefficients and 63 pHash bits. The concatenated 1,406 values pass through train-only normalization and a 256/64/1 MLP. The backbone is frozen while fitting the fusion and deep-only heads.
+The complete evidence bundle is in [reports/v1-evidence](reports/v1-evidence) and downloadable from `/evidence`. It includes benchmark JSON, training records, model card, per-video and frame scores, timing repeats and evaluation source files, with SHA-256 indexes. Verify it with:
 
-Every evaluation frame is decoded. The pHash arm can reuse an earlier score within two hash bits, subject to RGB/DCT residual limits and a refresh every 12 frames. Reused frames retain their temporal weight. pHash similarity does not prove authenticity; reuse can miss brief or subtle edits.
+```powershell
+.\.venv\Scripts\python.exe scripts\record_benchmark_evidence.py --verify
+.\.venv\Scripts\python.exe scripts\record_benchmark_evidence.py --verify-150
+```
 
-## Train and measure on a T4
+The evidence page at `/evidence` summarizes the run and offers wallet anchoring. The bundle can also be checked offline. Anchoring records a benchmark file hash and evidence-manifest hash; it cannot prove the dataset or content is truthful.
 
-Open [Authenfy_EfficientNet_Fusion_T4.ipynb](notebooks/Authenfy_EfficientNet_Fusion_T4.ipynb) in Colab, select a T4 and run the cells. The [experiment protocol](docs/EFFICIENTNET_EXPERIMENT.md) documents features, splits, training settings, timing and limitations.
+## Run locally
 
-The experiment uses Kaggle [FF++ C23](https://www.kaggle.com/datasets/xdxd003/ff-c23), version 1: all 4,320 training and 840 validation videos, plus a fixed 240-video test subset. Both manipulation directions and their original sources stay in the same official source-pair split. This does not prove identity-disjoint generalization. Test data never selects checkpoints or the fixed 0.5 classification threshold.
-
-The test subset contains 40 real and 200 manipulated videos; predicting every video as fake gives 83.33% raw accuracy. Balanced accuracy, AUROC, class-specific errors and a constant-prior control accompany raw accuracy.
-
-The downloaded run bundle contains:
-
-- `training.json`: epoch histories, full validation metrics, hyperparameters, hardware, software versions, seed, durations and checkpoint hashes.
-- `benchmark.json` / `benchmark.md`: all four arms' video/frame/method metrics, calibration, confusion matrices, latency distributions, throughput, frame reuse and measured resources.
-- `video-predictions.csv`, `frame-predictions.npz`, `timings.csv`: individual scores and all three timing repeats for every clip and arm.
-- `additional-metrics.json`: source-group bootstrap confidence intervals, paired accuracy/speed comparisons, descriptive ROC operating points and the constant-prior control.
-- `figures/`: learning curves, ROC/PR/calibration, confusion matrices and accuracy/speed/reuse plots.
-- Three trained `.pt` checkpoints, `efficientnet-fusion.onnx`, `model-card.json`, manifest, dataset provenance and execution logs.
-
-## Run the trained application
-
-After downloading and extracting a completed measured run:
+Python 3.12 is supported. Install the trained bundle first; model artifacts are not stored in Git:
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
-.\.venv\Scripts\python.exe scripts/install_fusion.py C:/path/to/extracted/run
-$env:AUTHENFY_ENGINE = 'fusion'
+.\.venv\Scripts\python.exe scripts\install_fusion.py C:/path/to/extracted/run
 .\.venv\Scripts\waitress-serve.exe --host=127.0.0.1 --port=5000 app:app
 ```
 
-Open http://127.0.0.1:5000. The installer checks the matching ONNX, training, benchmark and model-card hashes. Selecting `fusion` reports missing or corrupt weights explicitly. Model binaries, datasets and local receipt keys are excluded from Git.
+The installer validates the ONNX model, training metadata, benchmark and model-card hashes. The fusion service uses CPU ONNX independently of the GPU benchmark. It decodes every video frame, batches inference, and can reuse scores for visually similar frames under conservative RGB/DCT checks. Uploads are limited to 64 MiB, 120 seconds, 3,600 frames and 20 MP per frame. One analysis runs at a time. Scores are uncalibrated screening signals and every case needs human review.
 
-The application runs CPU ONNX inference, independently from the T4 speed measurements. It inspects every decoded video frame with batches of eight and discloses approximate score reuse. Limits are 64 MiB, 120 seconds, 3,600 frames and 20 MP per frame; the isolated analyzer has a 90-second deadline. Uploads are removed after the request, and one analysis is admitted at a time.
+## Blockchain timestamping
 
-Scores are uncalibrated screening signals. Every result requires review. The service uses full-frame center crops; it does not localize faces or analyze audio, lip sync or rPPG. Fully AI-generated video detection is not enabled. A reused-frame video cannot receive a low-signal verdict.
+`contracts/AnalysisRegistry.sol` stores immutable `(file SHA-256, commitment SHA-256)` pairs. The app can anchor local analysis receipts and the benchmark evidence manifest using an injected EIP-1193 browser wallet. The contract publisher is fixed at deployment; the connected wallet must be that publisher. The private key stays in the wallet. The server uses a read-only RPC endpoint to verify chain ID, sender, call data, transaction status and the emitted event before marking an item anchored.
 
-## API and receipts
+Install the development dependencies, then deploy from a trusted shell to a chain you control. Protect the deployer key and never commit it:
+
+```powershell
+npm ci
+$env:AUTHENFY_RPC_URL = 'https://your-rpc-endpoint'
+$env:AUTHENFY_DEPLOYER_PRIVATE_KEY = '0x...'
+npm run deploy:contract
+```
+
+Copy the returned registry address and chain ID into the Authenfy deployment configuration. Set `AUTHENFY_RPC_URL` to a read-only RPC endpoint for that same chain, then restart the service. In the browser, add the same chain to the wallet and connect the registry publisher account. The registry contract tests run on a disposable in-process Ganache chain; no public deployment is included in this repository. Public transactions require gas and an RPC/wallet you provide.
+
+## Container deployment
+
+Install the model bundle at `artifacts/efficientnet-v1` before building. Then:
+
+```powershell
+Copy-Item deploy/.env.example .env
+# Optional: fill registry address, chain ID and read-only RPC URL in .env.
+docker compose up --build -d
+```
+
+Open `http://localhost:5000`. Compose runs as a non-root user, mounts model files read-only, makes the container root filesystem read-only, drops Linux capabilities and persists the SQLite database and HMAC signing key in a named volume. Back up that volume securely; losing the HMAC key invalidates local receipt signatures. Put a public deployment behind HTTPS and a proxy with appropriate upload/body and request timeouts. The built-in analyzer caps still apply.
+
+## API
 
 | Endpoint | Purpose |
 |---|---|
-| `GET /health` | Engine identity and model integrity; 503 when unavailable |
-| `POST /analyze` | Multipart `media`; scores, coverage, frames, hashes and signed receipt |
-| `GET /receipts/<receipt_id>` | Download a verified local JSON receipt |
-| `POST /verify` | Multipart `receipt_id` and `media`; exact-file SHA-256 and signature check |
+| `GET /health` | Model availability and blockchain configuration status |
+| `POST /analyze` | Analyze multipart `media`; return scores, evidence and signed receipt |
+| `GET /receipts/<receipt_id>` | Download receipt and verified anchor metadata, if recorded |
+| `POST /verify` | Verify a receipt and exact uploaded file bytes |
+| `GET /evidence` | Inspect and anchor the benchmark evidence |
+| `GET /evidence/v1-ff-c23-100` | Download the SHA-256 indexed evidence manifest |
+| `GET /evidence/v1-ff-c23-100/bundle.zip` | Download the complete proof bundle and hash sidecars |
+| `GET /evidence/v1-ff-c23-150/benchmark.json` | Download the full later benchmark record |
+| `GET /evidence/v1-ff-c23-150/comparison.json` | Download the concise comparison and paired uncertainty summary |
+| `GET /evidence/v1-ff-c23-150/manifest.json` | Download the 150-video file-hash manifest |
+| `GET /evidence/v1-ff-c23-150/manifest.sha256` | Download its SHA-256 sidecar |
+| `POST /anchors/confirm` | Verify a mined wallet transaction against the configured registry |
+| `GET /anchors/<kind>/<subject_id>` | Retrieve the server-verified chain anchor |
 
-Receipts use server-held HMAC-SHA256 keys and SQLite. Protect and back up the key with the database. These are local server-verifiable records. The tested Ethereum registry contract is included, but the application reports `blockchain_anchored: false` and does not submit public-chain transactions.
+Receipts are HMAC-SHA256 signed and stored in SQLite. Keep the database and signing key together. Blockchain timestamping proves that a particular hash pair was recorded at a chain position; it does not prove a media file is authentic or an analysis is correct.
 
-## Verification
+## Checks
 
 ```powershell
 .\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
@@ -67,6 +86,4 @@ npm run test:contract
 npm run test:browser
 ```
 
-CI checks Windows/Linux application behavior, feature and source-split integrity, CPU ONNX parity and Ethereum contract behavior. Browser checks require a running local server and Chrome. Test success is separate from trained-model evaluation.
-
-The earlier pretrained ViT/CLIP engine remains explicitly selectable with `AUTHENFY_ENGINE=legacy`; its setup and small correlated audit are archived in [LEGACY_ENGINE.md](docs/LEGACY_ENGINE.md). Those results are not the fine-tuned v1 benchmark.
+Browser tests need Chrome and a running local app. Tests validate code behavior; benchmark results are separate model evidence.

@@ -1,5 +1,8 @@
 .env
+.env.*
+!.env.example
 .venv/
+venv/
 __pycache__/
 *.py[cod]
 .pytest_cache/
@@ -17,3 +20,16 @@ runs/
 *.pt
 *.pth
 *.npz
+.ipynb_checkpoints/
+*.log
+*.sqlite
+*.sqlite3
+*.db
+*.key
+*.pem
+*.p12
+*.pfx
+credentials.json
+token.json
+dist/
+build/

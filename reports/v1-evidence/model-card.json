@@ -1,0 +1,85 @@
+{
+  "schema_version": 1,
+  "architecture": "EfficientNet-B0 + DCT63 + pHash63 -> MLP256/64/1",
+  "feature_version": "efficientnet-b0-1280+dct63+phash63-v1",
+  "model_sha256": "5bb4859856e3fbbdb15a814b4f0d93df01bfb0b52a8be5d84f55a02ed5527a64",
+  "status": "validated",
+  "training_manifest_sha256": "d1528e45a7a58f9a59811de1fe75cf6bd8dfcc587d326a5fa930ab77fa3490ba",
+  "training_weights_sha256": {
+    "baseline.pt": "7942c3db2d508b83e2696e55485c7fcbbb4f0a4dbf7a28955773f6450dbd6eda",
+    "deep_mlp.pt": "9b4b991affc1fb2a9dac281b630fa50ed476b0aa3b5451768f3ebae10589f58b",
+    "fusion.pt": "a4e478dc4f3e57cfd953f044dc39b8bdb20159a0c07fe258bf7a7afc9d5b6e8f"
+  },
+  "training_runtime": {
+    "python": "3.12.14",
+    "device": "NVIDIA GeForce RTX 4060 Laptop GPU",
+    "cuda": "12.8",
+    "cudnn": 91002,
+    "opencv": "4.12.0",
+    "hardware": {
+      "cpu": "Intel64 Family 6 Model 191 Stepping 2, GenuineIntel",
+      "logical_cpus": 24,
+      "platform": "Windows-11-10.0.26200-SP0",
+      "torch_cpu_threads": 16,
+      "gpu_total_bytes": 8585216000,
+      "gpu_compute_capability": [
+        8,
+        9
+      ],
+      "driver_version": "610.88"
+    },
+    "packages": {
+      "torch": "2.8.0+cu128",
+      "torchvision": "0.23.0+cu128",
+      "numpy": "2.2.6",
+      "Pillow": "12.3.0",
+      "scikit-learn": "1.7.2",
+      "onnx": "1.19.1",
+      "onnxruntime": "1.31.0"
+    },
+    "git_commit": "d5ff81cdc0fc3a99a960e633393062b557ef2202"
+  },
+  "training_sha256": "28a986a3ab43993459219b66a6c581ca3752800840a6ef5ef71dab86171f0e88",
+  "export_runtime": {
+    "python": "3.12.14",
+    "device": "NVIDIA GeForce RTX 4060 Laptop GPU",
+    "cuda": "12.8",
+    "cudnn": 91002,
+    "opencv": "4.12.0",
+    "hardware": {
+      "cpu": "Intel64 Family 6 Model 191 Stepping 2, GenuineIntel",
+      "logical_cpus": 24,
+      "platform": "Windows-11-10.0.26200-SP0",
+      "torch_cpu_threads": 16,
+      "gpu_total_bytes": 8585216000,
+      "gpu_compute_capability": [
+        8,
+        9
+      ],
+      "driver_version": "610.88"
+    },
+    "packages": {
+      "torch": "2.8.0+cu128",
+      "torchvision": "0.23.0+cu128",
+      "numpy": "2.2.6",
+      "Pillow": "12.3.0",
+      "scikit-learn": "1.7.2",
+      "onnx": "1.19.1",
+      "onnxruntime": "1.31.0"
+    },
+    "git_commit": "d5ff81cdc0fc3a99a960e633393062b557ef2202"
+  },
+  "benchmark_sha256": "8b8062ee0b3a11ea667d5655d0a4d92979c628d2cb00fcdcd077489728432457",
+  "parity_max_logit_error": 0.00049591064453125,
+  "parity_inputs": 24,
+  "parameter_counts": {
+    "efficientnet_baseline": 4008829,
+    "active_backbone": 4007548,
+    "fusion_head": 376705,
+    "active_fusion_total": 4384253
+  },
+  "model_bytes": 17541192,
+  "task": "facial_manipulation",
+  "threshold": 0.5,
+  "limitation": "Source-pair FF++ evaluation only; no evidence for fully generated videos or calibrated probabilities."
+}

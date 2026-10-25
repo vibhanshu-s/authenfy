@@ -8,7 +8,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from authenfy.fusion_features import FEATURE_VERSION
-from authenfy.model import sha256_file
+from authenfy.integrity import sha256_file
 
 
 def install(source, target):

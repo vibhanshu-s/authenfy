@@ -150,6 +150,11 @@ def main(args):
         if file_sha(args.run / name) != digest:
             raise ValueError("Checkpoint integrity mismatch")
     rows = [r for r in load_manifest(args.manifest) if r["split"] == "test"]
+    test_pool_videos = len(rows)
+    if args.limit_videos:
+        if args.limit_videos < 1:
+            raise ValueError("Video limit must be positive")
+        rows = rows[: args.limit_videos]
     ledger = VideoLedger(
         args.run / "benchmark-records",
         dict(
@@ -302,6 +307,9 @@ def main(args):
         runtime=identity,
         repeats=args.repeats,
         batch_size=args.batch_size,
+        test_videos=len(results),
+        test_pool_videos=test_pool_videos,
+        test_video_limit=args.limit_videos or None,
         model_loading_seconds=cold,
         resumed_videos=resumed_videos,
         persistent_recovery=dict(
@@ -370,7 +378,7 @@ def main(args):
     lines.extend(
         [
             "",
-            "These results cover the manifest's selected held-out source pairs, not the entire Kaggle collection.",
+            f"These results cover {len(results)} held-out videos out of {test_pool_videos} in the selected test split, not the entire Kaggle collection.",
             "",
             *report["limitations"],
         ]
@@ -405,6 +413,7 @@ if __name__ == "__main__":
     parser.add_argument("run", type=Path)
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--repeats", type=int, default=3)
+    parser.add_argument("--limit-videos", type=int, default=0, help="Benchmark only the first N held-out videos")
     parser.add_argument("--require-t4", action="store_true")
     parser.add_argument("--recovery-dir", type=Path, help="Back up each completed video between timed clips")
     parser.add_argument(

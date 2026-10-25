@@ -1,0 +1,62 @@
+{
+  "status": "measured",
+  "dataset": "Kaggle xdxd003/ff-c23 v1 selected held-out test subset",
+  "timing_repeats": 3,
+  "baseline": "baseline_all",
+  "comparison_metrics": [
+    {
+      "arm": "baseline_all",
+      "accuracy": 0.8866666666666667,
+      "accuracy_change_vs_baseline_percentage_points": 0.0,
+      "auroc": 0.9317617866004962,
+      "auroc_change_vs_baseline": 0.0,
+      "f1": 0.9300411522633745,
+      "f1_change_vs_baseline": 0.0,
+      "throughput_fps": 82.33421138230251,
+      "speed_change_vs_baseline_percent": 0.0,
+      "mean_seconds_per_video": 6.062364497333227
+    },
+    {
+      "arm": "deep_mlp_all",
+      "accuracy": 0.9266666666666666,
+      "accuracy_change_vs_baseline_percentage_points": 3.9999999999999925,
+      "auroc": 0.9429280397022332,
+      "auroc_change_vs_baseline": 0.011166253101736912,
+      "f1": 0.9571984435797666,
+      "f1_change_vs_baseline": 0.027157291316392107,
+      "throughput_fps": 82.18224422064837,
+      "speed_change_vs_baseline_percent": -0.1845735315888497,
+      "mean_seconds_per_video": 6.0735747086667
+    },
+    {
+      "arm": "fusion_all",
+      "accuracy": 0.9266666666666666,
+      "accuracy_change_vs_baseline_percentage_points": 3.9999999999999925,
+      "auroc": 0.9416873449131514,
+      "auroc_change_vs_baseline": 0.00992555831265518,
+      "f1": 0.9571984435797666,
+      "f1_change_vs_baseline": 0.027157291316392107,
+      "throughput_fps": 79.84780823251162,
+      "speed_change_vs_baseline_percent": -3.019890648184831,
+      "mean_seconds_per_video": 6.2511421546667485
+    },
+    {
+      "arm": "fusion_phash",
+      "accuracy": 0.9266666666666666,
+      "accuracy_change_vs_baseline_percentage_points": 3.9999999999999925,
+      "auroc": 0.9432382133995038,
+      "auroc_change_vs_baseline": 0.01147642679900751,
+      "f1": 0.9571984435797666,
+      "f1_change_vs_baseline": 0.027157291316392107,
+      "throughput_fps": 92.12045329902082,
+      "speed_change_vs_baseline_percent": 11.885997026531104,
+      "mean_seconds_per_video": 5.418340684666447
+    }
+  ],
+  "fusion_phash_accuracy_difference_vs_baseline_group_bootstrap_95ci": [
+    -0.02666666666666667,
+    0.12504166666666663
+  ],
+  "fusion_phash_speedup_vs_baseline_percent": 11.885997026531104,
+  "interpretation": "The pHash accuracy-difference interval includes zero; the accuracy comparison is not conclusive at the 95% level."
+}

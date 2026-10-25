@@ -193,13 +193,12 @@ def test_fusion_service_streams_every_frame_and_discloses_reuse(tmp_path):
     assert sum(sizes) == 3
 
 
-def test_fusion_mode_never_silently_falls_back_to_legacy(tmp_path):
+def test_missing_fusion_model_never_returns_a_fake_prediction(tmp_path):
     from app import create_app
 
     app = create_app(
         dict(
             TESTING=True,
-            ENGINE="fusion",
             FUSION_DIR=str(tmp_path / "absent"),
             DATABASE=str(tmp_path / "receipts.db"),
             SIGNING_KEY_PATH=str(tmp_path / "key"),
@@ -209,7 +208,7 @@ def test_fusion_mode_never_silently_falls_back_to_legacy(tmp_path):
     response = client.get("/health")
     assert response.status_code == 503
     assert response.json["code"] == "model_unavailable"
-    assert b"EfficientNet-B0" in client.get("/").data
+    assert client.get("/").status_code == 200
 
 
 @pytest.mark.parametrize("card", [None, [], "invalid", 17])

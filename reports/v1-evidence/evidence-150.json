@@ -1,0 +1,175 @@
+{
+  "schema_version": 1,
+  "run_id": "ff-c23-v1-150-video",
+  "status": "measured",
+  "scope": {
+    "test_videos": 150,
+    "test_pool_videos": 240,
+    "real_videos": 26,
+    "manipulated_videos": 124,
+    "source_groups": 13,
+    "decoded_frames": 74871,
+    "timing_repeats_per_arm": 3
+  },
+  "recorded_git_revision": "d5ff81cdc0fc3a99a960e633393062b557ef2202",
+  "source_provenance_note": "The run records the Git HEAD revision but did not capture a dirty-tree source hash. The source-150 files are preserved for inspection and reproduction context; they are not proof of exact source bytes at execution.",
+  "benchmark_sha256": "1afbe52d3258741a8f4d5e149e2348899c0fdded0a0e7337877cb5cc22c9eef5",
+  "comparison_sha256": "ecc54882adba8c90dc13452c519116b7eae778261f98cb62b3ddbb04827b5211",
+  "files": [
+    {
+      "path": "benchmark-150-comparison.json",
+      "bytes": 2450,
+      "sha256": "ecc54882adba8c90dc13452c519116b7eae778261f98cb62b3ddbb04827b5211"
+    },
+    {
+      "path": "benchmark-150.json",
+      "bytes": 1714754,
+      "sha256": "1afbe52d3258741a8f4d5e149e2348899c0fdded0a0e7337877cb5cc22c9eef5"
+    },
+    {
+      "path": "benchmark-150.md",
+      "bytes": 1279,
+      "sha256": "ee8404bb33f2abab04a024337449c89e19e58eabc93b3aabe2e94f7f6669f222"
+    },
+    {
+      "path": "benchmark.json",
+      "bytes": 1185395,
+      "sha256": "8b8062ee0b3a11ea667d5655d0a4d92979c628d2cb00fcdcd077489728432457"
+    },
+    {
+      "path": "benchmark.md",
+      "bytes": 1167,
+      "sha256": "5e3a7e98dfb48ec790ba2d3475bc222c4bcdf1b785173188ac5699ca88fbcfbb"
+    },
+    {
+      "path": "evidence-bundle.zip",
+      "bytes": 723816,
+      "sha256": "5b16d0f511d69417d5a99b72a315d31f3c5d70cfb2016f74846d75361cba5bf5"
+    },
+    {
+      "path": "evidence-bundle.zip.sha256",
+      "bytes": 87,
+      "sha256": "0040871739515588cd91e82300e59f953430d8bac005e2bf7b96aa0a0a975283"
+    },
+    {
+      "path": "evidence.json",
+      "bytes": 169044,
+      "sha256": "4686bb95ae5c6211fbf19cbe4184356fcc1e29eb113b352d19d7174e74ea4489"
+    },
+    {
+      "path": "evidence.json.sha256",
+      "bytes": 81,
+      "sha256": "9a25be3817e05b031e33d7befd495883b579b3b9047878cf98e3c0311387a64b"
+    },
+    {
+      "path": "frame-predictions-150.csv",
+      "bytes": 5897492,
+      "sha256": "495987e36941ae10c9454e106c400b7169526cfbff1e043d691ac0c6fe50ddca"
+    },
+    {
+      "path": "frame-predictions.npz",
+      "bytes": 440688,
+      "sha256": "3028e8b4e2b01e49bc03052b03552d1ce49979cf78bad38f2ccfa89a6d2e2dbd"
+    },
+    {
+      "path": "model-card.json",
+      "bytes": 2933,
+      "sha256": "b9c05840ebfc5cb09013583db54212fd5b1dd88f7941cf54d56e3920b2156dc6"
+    },
+    {
+      "path": "source/authenfy/fusion_features.py",
+      "bytes": 2995,
+      "sha256": "23a67ddd409bad195cfc5a282a7005ecdc7ed2e5537ac8d26fa96ed541413167"
+    },
+    {
+      "path": "source/training/benchmark.py",
+      "bytes": 18973,
+      "sha256": "1b2c32ed2943a0f442d4904994c50815c22043504ec10aa63651da68bbab7e7a"
+    },
+    {
+      "path": "source/training/manifest.py",
+      "bytes": 3032,
+      "sha256": "3a3d9112f9e42f77f039e742240e01bb817abbbae87086794203dd6d5aaed8bd"
+    },
+    {
+      "path": "source/training/metrics.py",
+      "bytes": 4694,
+      "sha256": "177d52ef0824f296a2afa60d4d096fe90506c5b6da17deb538fdb17ecf818014"
+    },
+    {
+      "path": "source/training/recording.py",
+      "bytes": 2523,
+      "sha256": "3f8f78a05d0aee3f773b13867a177cb254db8285c7c781b436c0c42c2c287848"
+    },
+    {
+      "path": "source/training/video.py",
+      "bytes": 2184,
+      "sha256": "4d3913ca801b46940fc8b3c401c3a9a95eae7ba37a8f7d931e914eefde54239f"
+    },
+    {
+      "path": "source-150/authenfy/fusion_features.py",
+      "bytes": 2995,
+      "sha256": "23a67ddd409bad195cfc5a282a7005ecdc7ed2e5537ac8d26fa96ed541413167"
+    },
+    {
+      "path": "source-150/training/benchmark.py",
+      "bytes": 18973,
+      "sha256": "1b2c32ed2943a0f442d4904994c50815c22043504ec10aa63651da68bbab7e7a"
+    },
+    {
+      "path": "source-150/training/manifest.py",
+      "bytes": 3032,
+      "sha256": "3a3d9112f9e42f77f039e742240e01bb817abbbae87086794203dd6d5aaed8bd"
+    },
+    {
+      "path": "source-150/training/metrics.py",
+      "bytes": 4694,
+      "sha256": "177d52ef0824f296a2afa60d4d096fe90506c5b6da17deb538fdb17ecf818014"
+    },
+    {
+      "path": "source-150/training/networks.py",
+      "bytes": 1948,
+      "sha256": "21d64439a735c8830390d88c6244a02f523baf7c41fd8518aff20c44031a6d71"
+    },
+    {
+      "path": "source-150/training/recording.py",
+      "bytes": 2523,
+      "sha256": "3f8f78a05d0aee3f773b13867a177cb254db8285c7c781b436c0c42c2c287848"
+    },
+    {
+      "path": "source-150/training/train.py",
+      "bytes": 19771,
+      "sha256": "715e21b58f337165bb903bec716f35e0b6f2a3627a26ab4dc764f83c1925ca63"
+    },
+    {
+      "path": "source-150/training/video.py",
+      "bytes": 2184,
+      "sha256": "4d3913ca801b46940fc8b3c401c3a9a95eae7ba37a8f7d931e914eefde54239f"
+    },
+    {
+      "path": "timings-150.csv",
+      "bytes": 353773,
+      "sha256": "04f44d34d9092cc77d3f6562b52e134c8a1e8b64df2b1838958938f15ec93104"
+    },
+    {
+      "path": "timings.csv",
+      "bytes": 235877,
+      "sha256": "22522d32e869e9c98d4680db30db1620fd6b96c5d3ef196a13675c48049cacc2"
+    },
+    {
+      "path": "training.json",
+      "bytes": 233277,
+      "sha256": "28a986a3ab43993459219b66a6c581ca3752800840a6ef5ef71dab86171f0e88"
+    },
+    {
+      "path": "video-predictions-150.csv",
+      "bytes": 28578,
+      "sha256": "5c2e96583ca2b08c7c6d7c090cf2fbbf31ce4b615ff23ba9c435084f38bfaa89"
+    },
+    {
+      "path": "video-predictions.csv",
+      "bytes": 19077,
+      "sha256": "fa61cfe423f1e7f56fffbd46ca4f4098c0bfdeba190b46e3292f55fae02b673c"
+    }
+  ]
+}

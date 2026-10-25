@@ -1,0 +1,28 @@
+{% extends "base.html" %}{% block title %}Benchmark evidence | Authenfy{% endblock %}{% block content %}
+<article class="prose evidence-page">
+  <p class="eyebrow">Reproducible evaluation record</p>
+  <h1>V1 benchmark evidence.</h1>
+  {% if evidence %}
+  <p>Fine-tuned EfficientNet-B0, DCT and pHash fusion compared with the all-frame baseline. This is a recorded experiment, not a deployment accuracy guarantee.</p>
+  <p><strong>Dataset:</strong> <a href="{{ evidence.dataset_url }}" rel="noreferrer">{{ evidence.dataset }}</a><br><strong>GPU:</strong> {{ evidence.device }}<br><strong>Git commit:</strong> <code>{{ evidence.git_commit }}</code></p>
+  {% if benchmark150 %}<p><strong>Current comparison:</strong> {{ benchmark150.videos }} held-out videos; {{ benchmark150.timing_repeats }} timing repeats per arm. Positive speed change means faster than the all-frame baseline.</p>{% endif %}
+  <div class="table-scroll"><table><thead><tr><th>Arm</th><th>Accuracy</th><th>AUROC</th><th>F1</th><th>FPS</th><th>Speed vs baseline</th></tr></thead><tbody>
+  {% if benchmark150 %}{% for metrics in benchmark150.comparison_metrics %}<tr><th scope="row">{{ metrics.arm }}</th><td>{{ "%.2f%%"|format(metrics.accuracy * 100) }}</td><td>{{ "%.4f"|format(metrics.auroc) }}</td><td>{{ "%.4f"|format(metrics.f1) }}</td><td>{{ "%.2f"|format(metrics.throughput_fps) }}</td><td>{{ "%+.2f%%"|format(metrics.speed_change_vs_baseline_percent) }}</td></tr>{% endfor %}{% endif %}
+  </tbody></table></div>
+  {% if benchmark150 %}<p>Fusion with pHash reuse improved observed accuracy by 4 percentage points and measured 11.89% faster than the baseline. Its paired source-group accuracy interval was -2.67 to +12.50 percentage points and included zero, so this run does not establish a conclusive accuracy improvement.</p>{% endif %}
+  <h2>Current benchmark files</h2>
+  <p>Download the complete metrics, predictions, frame scores and timing repeats for the current comparison.</p>
+  <p><a class="button-link" href="/evidence/v1-ff-c23-150/benchmark.json">Raw 150-video benchmark JSON ↗</a> · <a href="/evidence/v1-ff-c23-150/comparison.json">Comparison metrics JSON</a> · <a href="/evidence/v1-ff-c23-150/manifest.json">File-hash manifest</a> · <a href="/evidence/v1-ff-c23-150/manifest.sha256">Manifest hash</a></p>
+  <h2>Verify the earlier signed record</h2>
+  <p>The hash-indexed 100-video bundle is retained as a separate earlier run. <code>evidence.json.sha256</code> identifies its manifest; its manifest lists SHA-256 hashes for every bundled file. Blockchain anchoring on this page applies to that archived 100-video bundle.</p>
+  <p><a class="button-link" href="{{ url_for('evidence_bundle_download') }}">Download earlier signed bundle ↗</a> <a href="{{ url_for('evidence_download') }}">Earlier evidence manifest</a> · <a href="{{ url_for('benchmark_download') }}">Earlier raw benchmark JSON ↗</a></p>
+  <p><strong>Evidence manifest SHA-256:</strong><br><code class="hash-value">{{ evidence_hash }}</code><br><strong>Benchmark JSON SHA-256:</strong><br><code class="hash-value">{{ evidence.files['benchmark.json'].sha256 }}</code></p>
+  <section class="anchor-panel" data-kind="evidence" data-subject-id="{{ evidence.evidence_id }}" data-file-hash="{{ evidence.files['benchmark.json'].sha256 }}" data-commitment="{{ evidence_hash }}" {% if not blockchain_config.enabled %}data-disabled="true"{% endif %}>
+    <h2>Anchor this evidence</h2>
+    {% if blockchain_config.enabled %}<p>The wallet signs a transaction to registry <code>{{ blockchain_config.registry }}</code> on chain {{ blockchain_config.chain_id }}. The server checks the mined event and waits for {{ blockchain_config.confirmations }} confirmations before recording its transaction link.</p><button type="button" class="anchor-button">Connect wallet and timestamp evidence ↗</button><p class="anchor-status" role="status"></p>
+    {% else %}<p>Blockchain anchoring becomes active after the deployment is configured with a registry address, chain ID and read-only RPC URL. Local hashes can already be checked with the included verifier.</p>{% endif %}
+  </section>
+  <h2>Scope and limitations</h2><ul>{% for item in evidence.limitations %}<li>{{ item }}</li>{% endfor %}</ul>
+  {% else %}<p>The evidence bundle has not been installed. Run the evidence-recording script with the completed model run first.</p>{% endif %}
+</article>
+{% endblock %}

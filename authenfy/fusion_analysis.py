@@ -49,8 +49,8 @@ def analyze_fusion(path, detector):
     start = time.perf_counter()
     metadata = {}
     if path.suffix.lower() in IMAGE_EXTENSIONS:
-        images, metadata = decode_image(path)
-        iterator = [(0, images[0].image, 0.0)]
+        image, metadata = decode_image(path)
+        iterator = [(0, image, 0.0)]
     else:
         iterator = service_video(path, metadata)
     selector, rows, scores = FrameSelector(), [], {}

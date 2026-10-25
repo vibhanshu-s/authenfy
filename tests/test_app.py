@@ -20,9 +20,9 @@ class FakeDetector:
         self.score = score
         self.calls = []
 
-    def predict(self, images):
-        self.calls.append(len(images))
-        return [self.score] * len(images)
+    def predict_inputs(self, pixels, handcrafted):
+        self.calls.append(len(pixels))
+        return [self.score] * len(pixels)
 
 
 @pytest.fixture
@@ -51,6 +51,19 @@ def upload(client, data=None, name="test.png"):
 @pytest.mark.parametrize("route", ["/", "/upload", "/about", "/contact", "/form", "/health"])
 def test_routes_render(app, route):
     assert app.test_client().get(route).status_code == 200
+
+
+def test_evidence_page_and_later_benchmark_downloads(app):
+    client = app.test_client()
+    page = client.get("/evidence")
+    assert page.status_code == 200
+    assert b"92.67%" in page.data
+    assert b"+11.89%" in page.data
+    assert b"conclusive" in page.data
+    assert client.get("/evidence/v1-ff-c23-150/comparison.json").status_code == 200
+    assert client.get("/evidence/v1-ff-c23-150/benchmark.json").status_code == 200
+    assert client.get("/evidence/v1-ff-c23-150/manifest.json").status_code == 200
+    assert client.get("/evidence/v1-ff-c23-150/manifest.sha256").status_code == 200
 
 
 def test_receipt_and_verify(app):
@@ -120,7 +133,7 @@ def test_server_errors_do_not_expose_internals_and_cleanup(app):
     def fail(_):
         raise RuntimeError("private-server-file-path")
 
-    app.extensions["detector"].predict = fail
+    app.extensions["detector"].predict_inputs = fail
     response = upload(app.test_client())
     assert response.status_code == 500
     assert b"private-server-file-path" not in response.data
@@ -131,7 +144,7 @@ def test_missing_model_is_not_fake_prediction(tmp_path):
     app = create_app(
         {
             "TESTING": True,
-            "MODEL_PATH": str(tmp_path / "missing.onnx"),
+            "FUSION_DIR": str(tmp_path / "missing-model"),
             "UPLOAD_FOLDER": str(tmp_path / "uploads"),
             "DATABASE": str(tmp_path / "db"),
             "SIGNING_KEY_PATH": str(tmp_path / "key"),
@@ -148,12 +161,12 @@ def test_cross_origin_rejected(app):
 def test_busy_analyzer_does_not_mix_uploads(app):
     entered, release = threading.Event(), threading.Event()
 
-    def wait_predict(images):
+    def wait_predict(pixels, handcrafted):
         entered.set()
         assert release.wait(5)
-        return [0.5] * len(images)
+        return [0.5] * len(pixels)
 
-    app.extensions["detector"].predict = wait_predict
+    app.extensions["detector"].predict_inputs = wait_predict
     with ThreadPoolExecutor(max_workers=1) as pool:
         first = pool.submit(lambda: upload(app.test_client(), name="same.png"))
         assert entered.wait(5)
@@ -173,30 +186,46 @@ def test_video_temporal_coverage_and_exact_duplicates(app, tmp_path):
     writer.release()
     result = upload(app.test_client(), path.read_bytes(), "clip.avi").get_json()
     assert result["media"]["kind"] == "video"
-    assert result["media"]["sampled_frames"] == 16
+    assert result["media"]["sampled_frames"] == 20
     assert result["frames"][0]["timestamp_seconds"] == 0
     assert result["frames"][-1]["timestamp_seconds"] == 1.9
-    assert result["unique_frames_analyzed"] == 1
-    assert app.extensions["detector"].calls == [1]
+    assert 1 <= result["unique_frames_analyzed"] < 20
+    assert result["phash_reused_frames"] == 20 - result["unique_frames_analyzed"]
+    assert sum(app.extensions["detector"].calls) == result["unique_frames_analyzed"]
+    assert len(result["frames"]) == 20
 
 
 def test_wrong_model_checksum_fails(tmp_path):
-    from authenfy.model import Detector
+    import json
 
-    path = tmp_path / "bad.onnx"
-    path.write_bytes(b"wrong weights")
+    from authenfy.fusion_features import FEATURE_VERSION
+    from authenfy.fusion_model import FusionDetector
+
+    path = tmp_path / "model"
+    path.mkdir()
+    (path / "efficientnet-fusion.onnx").write_bytes(b"wrong weights")
+    (path / "model-card.json").write_text(
+        json.dumps(
+            {
+                "status": "validated",
+                "feature_version": FEATURE_VERSION,
+                "model_sha256": "0" * 64,
+                "training_manifest_sha256": "1" * 64,
+            }
+        )
+    )
     with pytest.raises(AnalysisError, match="checksum"):
-        Detector(path).predict([Image.new("RGB", (64, 64))])
+        FusionDetector(path).validate()
 
 
 def test_native_worker_timeout_cleans_upload(tmp_path, monkeypatch):
     import subprocess
-    from authenfy.model import Detector
+    from authenfy.fusion_model import FusionDetector
 
     def timeout(*args, **kwargs):
         raise subprocess.TimeoutExpired("isolated-analyzer", 90)
 
-    monkeypatch.setattr("authenfy.model.subprocess.run", timeout)
+    monkeypatch.setattr("authenfy.fusion_model.subprocess.run", timeout)
     app = create_app(
         {
             "TESTING": True,
@@ -204,7 +233,7 @@ def test_native_worker_timeout_cleans_upload(tmp_path, monkeypatch):
             "DATABASE": str(tmp_path / "db"),
             "SIGNING_KEY_PATH": str(tmp_path / "key"),
         },
-        Detector(tmp_path / "model.onnx"),
+        FusionDetector(tmp_path / "model"),
     )
     response = upload(app.test_client())
     assert response.status_code == 504

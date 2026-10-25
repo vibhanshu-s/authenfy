@@ -1,0 +1,38 @@
+services:
+  authenfy:
+    build: .
+    image: authenfy:local
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${AUTHENFY_PORT:-5000}:5000"
+    environment:
+      AUTHENFY_FUSION_DIR: /app/artifacts/efficientnet-v1
+      AUTHENFY_DATABASE: /app/instance/receipts.sqlite3
+      AUTHENFY_SIGNING_KEY_PATH: /app/instance/receipts.key
+      AUTHENFY_UPLOAD_FOLDER: /app/uploads
+      AUTHENFY_REGISTRY_ADDRESS: ${AUTHENFY_REGISTRY_ADDRESS:-}
+      AUTHENFY_CHAIN_ID: ${AUTHENFY_CHAIN_ID:-}
+      AUTHENFY_RPC_URL: ${AUTHENFY_RPC_URL:-}
+      AUTHENFY_CONFIRMATIONS: ${AUTHENFY_CONFIRMATIONS:-2}
+    volumes:
+      - ./artifacts/efficientnet-v1:/app/artifacts/efficientnet-v1:ro
+      - authenfy-instance:/app/instance
+      - authenfy-uploads:/app/uploads
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=128m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    init: true
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/health', timeout=4)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+volumes:
+  authenfy-instance:
+  authenfy-uploads:

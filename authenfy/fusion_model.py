@@ -10,10 +10,10 @@ import numpy as np
 
 from .errors import AnalysisError
 from .fusion_features import FEATURE_VERSION
-from .model import Detector, sha256_file
+from .integrity import sha256_file
 
 
-class FusionDetector(Detector):
+class FusionDetector:
     def __init__(self, directory):
         self.directory = Path(directory)
         self.path = self.directory / "efficientnet-fusion.onnx"

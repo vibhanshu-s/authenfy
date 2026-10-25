@@ -5,7 +5,8 @@
   "description": "Development-only browser and Ethereum registry checks",
   "scripts": {
     "test:contract": "node scripts/contract_check.mjs",
-    "test:browser": "node scripts/browser_check.mjs"
+    "test:browser": "node scripts/browser_check.mjs",
+    "deploy:contract": "node scripts/deploy_contract.mjs"
   },
   "devDependencies": {
     "ethers": "6.17.0",
